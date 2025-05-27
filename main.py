@@ -6,7 +6,9 @@ import tensorflow.keras as keras # Using tf.keras
 from collections import deque
 import random
 import sys # For sys.exit
-
+import logging
+logging.basicConfig(filename='simulation.log', level=logging.DEBUG, 
+                    format='%(asctime)s - %(levelname)s - %(message)s')
 # --- Helper function to check TensorFlow version ---
 def check_tf_sionna_versions():
     """Checks if the TensorFlow version is compatible with Sionna."""
@@ -192,7 +194,7 @@ class MmWaveISACEnv(gym.Env):
         angles_rad_tf: TensorFlow tensor [azimuth_rad, elevation_rad]
         Returns: Steering vector of shape [self.num_bs_antennas] (complex64)
         """
-        print("DEBUG: Entering _get_steering_vector")
+        logging.debug("Entering _get_steering_vector")
         azimuth_rad = tf.expand_dims(angles_rad_tf[0], axis=0)
         zenith_rad = tf.expand_dims(np.pi/2 - angles_rad_tf[1], axis=0)
 

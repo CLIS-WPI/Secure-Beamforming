@@ -49,76 +49,68 @@ class MmWaveISACEnv(gym.Env):
         super(MmWaveISACEnv, self).__init__()
 
         self.carrier_frequency = 28e9
-        self.bandwidth = 100e6 # Used for noise calculation, NOT UMa init
+        self.bandwidth = 100e6 
         self.num_bs_antennas_sqrt_rows = 8
         self.num_bs_antennas_sqrt_cols = 8
-        # ... (rest of your __init__ parameters up to channel_model) ...
         self.num_bs_antennas = self.num_bs_antennas_sqrt_rows * self.num_bs_antennas_sqrt_cols
         
+        # 1. Initialize self.bs_array FIRST
         try:
-            # DEFINITIVELY CORRECTED UMa initialization based on Sionna 1.0.2 source code insight
-            self.channel_model_core = UMa(
-                carrier_frequency=self.carrier_frequency,
-                o2i_model="low",          # Added REQUIRED parameter as per source
-                ut_array="omni",          # CORRECTED parameter name for UE/UT antenna
-                bs_array=self.bs_array,   # CORRECTED parameter name for BS antenna
-                direction="downlink",     # This was correctly identified as needed
-                enable_pathloss=True,     # This was fine
-                enable_shadow_fading=True # This was fine
-                # Removed: los_probability_model, delay_spread_model (not direct constructor parameters)
-                # Removed: tx_array_config, rx_array_config, bs_array_config, ut_array_config (incorrect names)
+            # Ensure PanelArray is imported correctly at the top of your file:
+            # from sionna.phy.antenna import PanelArray
+            self.bs_array = PanelArray( 
+                num_rows_per_panel=self.num_bs_antennas_sqrt_rows,
+                num_cols_per_panel=self.num_bs_antennas_sqrt_cols,
+                polarization="dual",
+                polarization_type="cross",
+                antenna_pattern="38.901",
+                carrier_frequency=self.carrier_frequency
             )
-        except TypeError as e:
-             # This catch block is now even less likely if the parameters above are truly definitive from source
-             print(f"CRITICAL ERROR: TypeError during Sionna UMa channel model initialization: {e}")
-             print("This means the parameter names provided (ut_array, bs_array, o2i_model) are STILL not matching "
-                   "your Sionna version's UMa class constructor, despite the source code insight.")
-             print("Please meticulously RE-VERIFY all UMa constructor arguments in your specific Sionna (1.0.2) source code or its most precise documentation.")
-             sys.exit(1)
-        except Exception as e:
-            print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model: {e}")
+            print("Sionna PanelArray for BS initialized successfully.") 
+        except NameError as e: # This would happen if PanelArray is not imported
+            print(f"CRITICAL ERROR: NameError during PanelArray initialization. Is PanelArray imported correctly? Error: {e}")
+            sys.exit(1)
+        except Exception as e: # Catch any other error during PanelArray init
+            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray: {e}")
             sys.exit(1)
 
+        # 2. Define other necessary parameters BEFORE UMa initialization if they are used by it or soon after
         self.num_user = 1
         self.num_attacker = 1
-        
         self.tx_power_dbm = 20.0
         self.tx_power_watts = 10**((self.tx_power_dbm - 30) / 10)
         self.noise_power_db_per_hz = -174.0
-        no_db = self.noise_power_db_per_hz + 10 * np.log10(self.bandwidth) # Correct use of bandwidth
+        no_db = self.noise_power_db_per_hz + 10 * np.log10(self.bandwidth) 
         self.no_lin = 10**((no_db - 30) / 10)
-
         self.sensing_range_max = 150.0
         self.max_steps_per_episode = 100
         
+        # 3. Now initialize self.channel_model_core using self.bs_array (ONLY ONCE)
         try:
+            # Using the definitive UMa constructor parameters for Sionna 1.0.2
             self.channel_model_core = UMa(
-            carrier_frequency=self.carrier_frequency,
-            rx_array=self.bs_array,  # Changed from bs_array_config
-            tx_array="omni",        # Changed from ut_array_config
-            direction="downlink",
-            enable_pathloss=True,
-            enable_shadow_fading=True
-        )
-            # If you intended to use TimeChannel as a wrapper:
-            # from sionna.phy.channel import TimeChannel
-            # self.time_channel_processor = TimeChannel(
-            # channel_model=self.channel_model_core, # Pass the UMa model instance
-            # bandwidth=self.bandwidth,
-            # num_time_steps=64, # Example, adjust as needed for CIR taps
-            # add_awgn=False # Usually add noise separately or control at system level
-            # )
-            # Then, in _get_channel_and_precoder_outputs, you would call self.time_channel_processor(...)
-            # For now, the code directly calls self.channel_model_core, which is fine.
+                carrier_frequency=self.carrier_frequency,
+                o2i_model="low",          # Required parameter
+                ut_array="omni",          # Correct parameter name for UE/UT antenna
+                bs_array=self.bs_array,   # Correct parameter name for BS antenna (now defined)
+                direction="downlink",     
+                enable_pathloss=True,     
+                enable_shadow_fading=True 
+            )
+            print("Sionna UMa channel model initialized successfully.")
         except TypeError as e:
              print(f"CRITICAL ERROR: TypeError during Sionna UMa channel model initialization: {e}")
-             print("This likely means some parameters are still incorrect for your Sionna version's UMa class.")
-             print("Please double-check UMa constructor arguments in the Sionna documentation.")
+             print("If this error persists, double-check the exact __init__ signature of "
+                   "sionna.phy.channel.tr38901.UMa in your installed Sionna 1.0.2 version. "
+                   "Ensure all required parameters like 'o2i_model', 'ut_array', and 'bs_array' are correctly named and provided.")
              sys.exit(1)
         except Exception as e:
-            print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model: {e}")
+            print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model (non-TypeError): {e}")
             sys.exit(1)
         
+        # REMOVED THE DUPLICATE UMA INITIALIZATION BLOCK AND REDUNDANT PARAMETER DEFINITIONS
+        
+        # 4. Define State and Action Spaces and other instance variables
         # State space definition (tensor shape: (7,))
         low_obs = np.array([-30.0, -np.pi, -np.pi/2, -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0], dtype=np.float32)
         high_obs = np.array([30.0, np.pi, np.pi/2, np.pi, np.pi/2, self.sensing_range_max, 1.0], dtype=np.float32)
@@ -139,7 +131,6 @@ class MmWaveISACEnv(gym.Env):
         self.current_beam_angles_tf = tf.Variable([0.0, 0.0], dtype=tf.float32)
         self.current_isac_effort = 0.5
         self.current_step = 0
-
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_beam_angles_tf.assign([0.0, 0.0])

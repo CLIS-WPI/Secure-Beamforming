@@ -175,7 +175,7 @@ class MmWaveISACEnv(gym.Env):
         sv = self.bs_array.steering_vector(azimuth_rad, zenith_rad)
         return tf.cast(tf.squeeze(sv, axis=[0,2]), tf.complex64) # Squeeze batch and stream dim
 
-    #@tf.function(reduce_retracing=True)
+    #@tf.function(reduce_retracing=True) # Keep commented out for now to ensure Python-level correctness first
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
         current_batch_size = tf.shape(user_pos_in)[0] 
 
@@ -192,33 +192,33 @@ class MmWaveISACEnv(gym.Env):
         ut_orientation_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
         ut_velocity_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
 
-        bs_config_tuple = (bs_loc_reshaped, bs_orientation, bs_velocity)
-        ut_config_user_tuple = (user_loc_reshaped, ut_orientation_user, ut_velocity_user)
-        ut_config_attacker_tuple = (attacker_loc_reshaped, ut_orientation_attacker, ut_velocity_attacker)
+        # These are the variable names already defined in your function scope
+        bs_config = (bs_loc_reshaped, bs_orientation, bs_velocity)
+        ut_config_user = (user_loc_reshaped, ut_orientation_user, ut_velocity_user)
+        ut_config_attacker = (attacker_loc_reshaped, ut_orientation_attacker, ut_velocity_attacker)
 
         num_time_samples_val = 1 
         sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32) 
 
-        # --- APPLIED NEEDFUL CHANGES HERE ---
-        # Pass bs_config, ut_config, and num_time_samples positionally.
-        # Pass sampling_frequency by keyword.
+        # --- CORRECTED CALLS USING YOUR DEFINED VARIABLE NAMES ---
+        # Pass bs_config and ut_config POSITIALLY, then OTHERS BY KEYWORD
         h_user_time_all_paths, _ = self.channel_model_core(
-            bs_config_tuple,            # 1st Positional argument (bs_config)
-            ut_config_user_tuple,       # 2nd Positional argument (ut_config)
-            num_time_samples_val,       # 3rd Positional argument (num_time_samples)
+            bs_config,            # 1st Positional argument 
+            ut_config_user,       # 2nd Positional argument
+            num_time_samples=num_time_samples_val,       # Keyword argument
             sampling_frequency=sampling_frequency_val      # Keyword argument
         )
         
         h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0]
 
         h_attacker_time_all_paths, _ = self.channel_model_core(
-            bs_config_tuple,            # 1st Positional argument
-            ut_config_attacker_tuple,   # 2nd Positional argument
-            num_time_samples_val,       # 3rd Positional argument
+            bs_config,            # 1st Positional argument
+            ut_config_attacker,   # 2nd Positional argument
+            num_time_samples=num_time_samples_val,       # Keyword argument
             sampling_frequency=sampling_frequency_val      # Keyword argument
         )
         h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0]
-        # --- END OF APPLIED CHANGES ---
+        # --- END OF CORRECTED CALLS ---
 
         steering_vec = self._get_steering_vector(current_beam_angles_tf_in)
         precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)

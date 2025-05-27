@@ -108,15 +108,16 @@ class MmWaveISACEnv(gym.Env):
             # Applying the definitive UMa constructor parameters for Sionna 1.0.2
             self.channel_model_core = UMa(
                 carrier_frequency=self.carrier_frequency,
-                o2i_model="low",          # Added REQUIRED parameter
-                ut_array=self.ut_array,   # Pass the UT PanelArray instance
-                bs_array=self.bs_array,   # Pass the BS PanelArray instance
+                o2i_model="low",
+                ut_array=self.ut_array,
+                bs_array=self.bs_array,
                 direction="downlink",     
                 enable_pathloss=True,     
                 enable_shadow_fading=True 
-                # Removed: los_probability_model, delay_spread_model (not direct constructor parameters for UMa 1.0.2)
+                # Removed always_generate_lsp=True, reverting to default (False)
             )
             print("Sionna UMa channel model initialized successfully.")
+            
         except TypeError as e:
              print(f"CRITICAL ERROR: TypeError during Sionna UMa channel model initialization: {e}")
              print("This implies a continued mismatch with UMa constructor arguments for Sionna 1.0.2. "
@@ -167,29 +168,52 @@ class MmWaveISACEnv(gym.Env):
 
     @tf.function(reduce_retracing=True)
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
-        bs_orientation = tf.zeros_like(self.bs_position[0])
-        bs_velocity = tf.zeros_like(self.bs_position[0])
-        ut_orientation = tf.zeros_like(user_pos_in[0])
-        ut_velocity = tf.zeros_like(user_pos_in[0])
+        # current shapes: user_pos_in is [1,3], self.bs_position is [1,3]
+        # Sionna's UMa expects locs: [batch_size, num_devices_per_link_end, 3]
+        # For a single BS and single UE/Attacker per call (batch_size=1 for the DRL step):
+        # Reshape to [batch_size=1, num_devices=1, num_coords=3]
+        
+        current_batch_size = tf.shape(user_pos_in)[0] # Should be 1 in this setup
 
-        bs_config = (self.bs_position, bs_orientation, bs_velocity)
-        ut_config_user = (user_pos_in, ut_orientation, ut_velocity)
-        ut_config_attacker = (attacker_pos_in, ut_orientation, ut_velocity)
+        bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, 1, 3])
+        user_loc_reshaped = tf.reshape(user_pos_in, [current_batch_size, 1, 3])
+        attacker_loc_reshaped = tf.reshape(attacker_pos_in, [current_batch_size, 1, 3])
 
-        # Use the corrected channel_model_core (UMa instance)
+        # Orientations and velocities should also match this new rank
+        # Assuming [yaw, pitch, roll] = [0,0,0] for simplicity
+        bs_orientation = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+        bs_velocity = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+        
+        ut_orientation_user = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+        ut_velocity_user = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+        
+        ut_orientation_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+        ut_velocity_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+
+        bs_config = (bs_loc_reshaped, bs_orientation, bs_velocity)
+        ut_config_user = (user_loc_reshaped, ut_orientation_user, ut_velocity_user)
+        ut_config_attacker = (attacker_loc_reshaped, ut_orientation_attacker, ut_velocity_attacker)
+
+        # Optional: Print shapes for debugging within tf.function (prints during tracing or graph execution)
+        # tf.print("BS loc shape:", tf.shape(bs_loc_reshaped), "UT loc shape:", tf.shape(user_loc_reshaped), output_stream=sys.stderr)
+
         h_user_time_all_paths, _ = self.channel_model_core(bs_config, ut_config_user)
-        h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0]
+        # h_user_time_all_paths shape: [batch_size, num_rx (links), num_rx_ant, num_tx (links), num_tx_ant, num_paths, num_time_steps]
+        # For batch_size=1, num_rx_links=1 (for this call), num_tx_links=1:
+        h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0] # Shape: [num_ue_antennas, num_bs_antennas]
         
         h_attacker_time_all_paths, _ = self.channel_model_core(bs_config, ut_config_attacker)
-        h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0]
+        h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0] # Shape: [num_ue_antennas, num_bs_antennas]
 
-        steering_vec = self._get_steering_vector(current_beam_angles_tf_in)
-        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)
-        precoder_w = tf.expand_dims(precoder_w, axis=1)
+        steering_vec = self._get_steering_vector(current_beam_angles_tf_in) # Shape [num_bs_antennas]
+        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9) # Shape [num_bs_antennas]
+        precoder_w = tf.expand_dims(precoder_w, axis=1) # Shape [num_bs_antennas, 1] for matmul
 
-        h_user_effective_row = tf.cast(h_user[0,:], tf.complex64)
-        h_attacker_effective_row = tf.cast(h_attacker[0,:], tf.complex64)
+        # Assuming SIMO for simplicity at UE (or just taking first UE antenna output)
+        h_user_effective_row = tf.cast(h_user[0,:], tf.complex64) # Take first UE antenna: shape [num_bs_antennas]
+        h_attacker_effective_row = tf.cast(h_attacker[0,:], tf.complex64) # Shape [num_bs_antennas]
 
+        # Squeeze precoder_w to ensure proper element-wise multiplication if h_..._row is also [num_bs_antennas]
         y_user_eff_scalar = tf.reduce_sum(h_user_effective_row * tf.squeeze(precoder_w))
         y_attacker_eff_scalar = tf.reduce_sum(h_attacker_effective_row * tf.squeeze(precoder_w))
         

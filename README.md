@@ -53,7 +53,7 @@ The current Python code provides a foundational simulation environment using `si
 ---
 
 
-## 📄 Related Publication (Conceptual - This is your target)
+## 📄Publication
 
 This research aims to build upon concepts in mmWave security and advance the state-of-the-art by integrating DRL with active ISAC-based threat assessment for proactive defense.
 

@@ -81,18 +81,14 @@ class MmWaveISACEnv(gym.Env):
         self.max_steps_per_episode = 100
         
         try:
-            # Corrected UMa initialization based on your analysis
-            self.channel_model_core = UMa( # Renamed to avoid confusion if you later wrap it
-                carrier_frequency=self.carrier_frequency,
-                bs_array_config=self.bs_array,
-                ut_array_config="omni", # UMa can take string "omni" or an Antenna object
-                direction="downlink",   # Added: Specify the direction
-                los_probability_model="R1-20_LoS", # Kept: This is a valid UMa parameter
-                delay_spread_model="R1-20_RMS_DS",  # Kept: This is a valid UMa parameter
-                enable_pathloss=True,
-                enable_shadow_fading=True
-                # Removed: bandwidth, domain (these were causing the error)
-            )
+            self.channel_model_core = UMa(
+            carrier_frequency=self.carrier_frequency,
+            rx_array=self.bs_array,  # Changed from bs_array_config
+            tx_array="omni",        # Changed from ut_array_config
+            direction="downlink",
+            enable_pathloss=True,
+            enable_shadow_fading=True
+        )
             # If you intended to use TimeChannel as a wrapper:
             # from sionna.phy.channel import TimeChannel
             # self.time_channel_processor = TimeChannel(

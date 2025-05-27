@@ -46,7 +46,7 @@ The current Python code provides a foundational simulation environment using `si
 * Develop more sophisticated attacker models and strategies.
 * Refine the ISAC sensing model for more detailed environmental perception.
 * Expand the DRL agent's state and action spaces for finer control and awareness.
-* Implement and compare against more baseline defense mechanisms (e.g., rule-based systems like SecBeam).
+* Implement and compare against more baseline defense mechanisms.
 * Explore advanced DRL algorithms (e.g., PPO, SAC) for potentially better performance.
 * Scale simulations and integrate with more comprehensive platforms like NVIDIA SIONA for larger-scale experiments and potential hardware-in-the-loop testing.
 
@@ -55,6 +55,5 @@ The current Python code provides a foundational simulation environment using `si
 
 ## 📄 Related Publication (Conceptual - This is your target)
 
-This research aims to build upon concepts in mmWave security (e.g., [SecBeam, arXiv:2307.00178v1]) and advance the state-of-the-art by integrating DRL with active ISAC-based threat assessment for proactive defense. The target outcome is a publication detailing this novel framework and its performance.
+This research aims to build upon concepts in mmWave security and advance the state-of-the-art by integrating DRL with active ISAC-based threat assessment for proactive defense.
 
-*(Feel free to replace `your_main_script_name.py` with the actual name of your script.)*

@@ -175,7 +175,7 @@ class MmWaveISACEnv(gym.Env):
         sv = self.bs_array.steering_vector(azimuth_rad, zenith_rad)
         return tf.cast(tf.squeeze(sv, axis=[0,2]), tf.complex64) # Squeeze batch and stream dim
 
-    @tf.function(reduce_retracing=True)
+    #@tf.function(reduce_retracing=True)
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
         current_batch_size = tf.shape(user_pos_in)[0] 
 
@@ -200,23 +200,22 @@ class MmWaveISACEnv(gym.Env):
         sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32) 
 
         # --- APPLIED NEEDFUL CHANGES HERE ---
-        # Pass ALL arguments by keyword to remove ambiguity for Autograph
+        # Pass bs_config, ut_config, and num_time_samples positionally.
+        # Pass sampling_frequency by keyword.
         h_user_time_all_paths, _ = self.channel_model_core(
-            bs_config=bs_config_tuple,            # Explicitly named
-            ut_config=ut_config_user_tuple,       # Explicitly named
-            num_time_samples=num_time_samples_val,
-            sampling_frequency=sampling_frequency_val
-            # Add other optional __call__ args by keyword if needed, e.g., los_requested=...
+            bs_config_tuple,            # 1st Positional argument (bs_config)
+            ut_config_user_tuple,       # 2nd Positional argument (ut_config)
+            num_time_samples_val,       # 3rd Positional argument (num_time_samples)
+            sampling_frequency=sampling_frequency_val      # Keyword argument
         )
         
         h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0]
 
         h_attacker_time_all_paths, _ = self.channel_model_core(
-            bs_config=bs_config_tuple,            # Explicitly named
-            ut_config=ut_config_attacker_tuple,   # Explicitly named
-            num_time_samples=num_time_samples_val,
-            sampling_frequency=sampling_frequency_val
-            # Add other optional __call__ args by keyword if needed
+            bs_config_tuple,            # 1st Positional argument
+            ut_config_attacker_tuple,   # 2nd Positional argument
+            num_time_samples_val,       # 3rd Positional argument
+            sampling_frequency=sampling_frequency_val      # Keyword argument
         )
         h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0]
         # --- END OF APPLIED CHANGES ---

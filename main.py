@@ -54,27 +54,45 @@ class MmWaveISACEnv(gym.Env):
         self.num_bs_antennas_sqrt_cols = 8
         self.num_bs_antennas = self.num_bs_antennas_sqrt_rows * self.num_bs_antennas_sqrt_cols
         
-        # 1. Initialize self.bs_array FIRST
+        # 1. Initialize self.bs_array (BS Antenna)
         try:
-            # Ensure PanelArray is imported correctly at the top of your file:
-            # from sionna.phy.antenna import PanelArray
+            # Using your current import for PanelArray
             self.bs_array = PanelArray( 
                 num_rows_per_panel=self.num_bs_antennas_sqrt_rows,
                 num_cols_per_panel=self.num_bs_antennas_sqrt_cols,
                 polarization="dual",
                 polarization_type="cross",
-                antenna_pattern="38.901",
+                antenna_pattern="38.901", # Standard 3GPP pattern
                 carrier_frequency=self.carrier_frequency
             )
             print("Sionna PanelArray for BS initialized successfully.") 
-        except NameError as e: # This would happen if PanelArray is not imported
+        except NameError as e: 
             print(f"CRITICAL ERROR: NameError during PanelArray initialization. Is PanelArray imported correctly? Error: {e}")
             sys.exit(1)
-        except Exception as e: # Catch any other error during PanelArray init
-            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray: {e}")
+        except Exception as e: 
+            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray for BS: {e}")
             sys.exit(1)
 
-        # 2. Define other necessary parameters BEFORE UMa initialization if they are used by it or soon after
+        # 2. Initialize self.ut_array (UE/UT Antenna, configured as omni-like PanelArray)
+        try:
+            # Using your current import for PanelArray
+            self.ut_array = PanelArray(
+                num_rows_per_panel=1,       # Single element for omni-like
+                num_cols_per_panel=1,       # Single element for omni-like
+                polarization='single',      # Simpler for UT
+                polarization_type='V',      # Example: Vertical
+                antenna_pattern='omni',     # Specify omni pattern
+                carrier_frequency=self.carrier_frequency
+            )
+            print("Sionna PanelArray for UT (omni) initialized successfully.")
+        except NameError as e: 
+            print(f"CRITICAL ERROR: NameError during PanelArray (for UT) initialization. Is PanelArray imported correctly? Error: {e}")
+            sys.exit(1)
+        except Exception as e:
+            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray for UT: {e}")
+            sys.exit(1)
+
+        # 3. Define other necessary parameters
         self.num_user = 1
         self.num_attacker = 1
         self.tx_power_dbm = 20.0
@@ -85,38 +103,36 @@ class MmWaveISACEnv(gym.Env):
         self.sensing_range_max = 150.0
         self.max_steps_per_episode = 100
         
-        # 3. Now initialize self.channel_model_core using self.bs_array (ONLY ONCE)
+        # 4. Now initialize self.channel_model_core using self.bs_array and self.ut_array
         try:
-            # Using the definitive UMa constructor parameters for Sionna 1.0.2
+            # Applying the definitive UMa constructor parameters for Sionna 1.0.2
             self.channel_model_core = UMa(
                 carrier_frequency=self.carrier_frequency,
-                o2i_model="low",          # Required parameter
-                ut_array="omni",          # Correct parameter name for UE/UT antenna
-                bs_array=self.bs_array,   # Correct parameter name for BS antenna (now defined)
+                o2i_model="low",          # Added REQUIRED parameter
+                ut_array=self.ut_array,   # Pass the UT PanelArray instance
+                bs_array=self.bs_array,   # Pass the BS PanelArray instance
                 direction="downlink",     
                 enable_pathloss=True,     
                 enable_shadow_fading=True 
+                # Removed: los_probability_model, delay_spread_model (not direct constructor parameters for UMa 1.0.2)
             )
             print("Sionna UMa channel model initialized successfully.")
         except TypeError as e:
              print(f"CRITICAL ERROR: TypeError during Sionna UMa channel model initialization: {e}")
-             print("If this error persists, double-check the exact __init__ signature of "
-                   "sionna.phy.channel.tr38901.UMa in your installed Sionna 1.0.2 version. "
-                   "Ensure all required parameters like 'o2i_model', 'ut_array', and 'bs_array' are correctly named and provided.")
+             print("This implies a continued mismatch with UMa constructor arguments for Sionna 1.0.2. "
+                   "The expected parameters based on your latest info are: "
+                   "carrier_frequency, o2i_model, ut_array (PanelArray), bs_array (PanelArray), direction, "
+                   "enable_pathloss, enable_shadow_fading, always_generate_lsp, precision.")
              sys.exit(1)
         except Exception as e:
             print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model (non-TypeError): {e}")
             sys.exit(1)
         
-        # REMOVED THE DUPLICATE UMA INITIALIZATION BLOCK AND REDUNDANT PARAMETER DEFINITIONS
-        
-        # 4. Define State and Action Spaces and other instance variables
-        # State space definition (tensor shape: (7,))
+        # 5. Define State and Action Spaces and other instance variables
         low_obs = np.array([-30.0, -np.pi, -np.pi/2, -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0], dtype=np.float32)
         high_obs = np.array([30.0, np.pi, np.pi/2, np.pi, np.pi/2, self.sensing_range_max, 1.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
-        # Action space definition
         self.num_discrete_actions = 7
         self.action_space = spaces.Discrete(self.num_discrete_actions)
         self.beam_angle_delta_rad = np.deg2rad(5)
@@ -131,6 +147,7 @@ class MmWaveISACEnv(gym.Env):
         self.current_beam_angles_tf = tf.Variable([0.0, 0.0], dtype=tf.float32)
         self.current_isac_effort = 0.5
         self.current_step = 0
+
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
         self.current_beam_angles_tf.assign([0.0, 0.0])

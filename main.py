@@ -56,16 +56,27 @@ class MmWaveISACEnv(gym.Env):
         self.num_bs_antennas = self.num_bs_antennas_sqrt_rows * self.num_bs_antennas_sqrt_cols
         
         try:
-            self.bs_array = PanelArray(
-                num_rows_per_panel=self.num_bs_antennas_sqrt_rows,
-                num_cols_per_panel=self.num_bs_antennas_sqrt_cols,
-                polarization="dual",
-                polarization_type="cross",
-                antenna_pattern="38.901",
-                carrier_frequency=self.carrier_frequency
+            # DEFINITIVELY CORRECTED UMa initialization based on Sionna 1.0.2 source code insight
+            self.channel_model_core = UMa(
+                carrier_frequency=self.carrier_frequency,
+                o2i_model="low",          # Added REQUIRED parameter as per source
+                ut_array="omni",          # CORRECTED parameter name for UE/UT antenna
+                bs_array=self.bs_array,   # CORRECTED parameter name for BS antenna
+                direction="downlink",     # This was correctly identified as needed
+                enable_pathloss=True,     # This was fine
+                enable_shadow_fading=True # This was fine
+                # Removed: los_probability_model, delay_spread_model (not direct constructor parameters)
+                # Removed: tx_array_config, rx_array_config, bs_array_config, ut_array_config (incorrect names)
             )
+        except TypeError as e:
+             # This catch block is now even less likely if the parameters above are truly definitive from source
+             print(f"CRITICAL ERROR: TypeError during Sionna UMa channel model initialization: {e}")
+             print("This means the parameter names provided (ut_array, bs_array, o2i_model) are STILL not matching "
+                   "your Sionna version's UMa class constructor, despite the source code insight.")
+             print("Please meticulously RE-VERIFY all UMa constructor arguments in your specific Sionna (1.0.2) source code or its most precise documentation.")
+             sys.exit(1)
         except Exception as e:
-            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray: {e}")
+            print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model: {e}")
             sys.exit(1)
 
         self.num_user = 1

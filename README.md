@@ -52,16 +52,6 @@ The current Python code provides a foundational simulation environment using `si
 
 ---
 
-## ⚙️ Setup & Running (Conceptual)
-
-1.  Ensure Python, TensorFlow, and Sionna are installed.
-2.  The main simulation script (`your_main_script_name.py`) can be run to start the DRL training process.
-    ```bash
-    python your_main_script_name.py
-    ```
-3.  (Future) Integration with NVIDIA SIONA platform tools for advanced simulation and GPU acceleration on systems like H100.
-
----
 
 ## 📄 Related Publication (Conceptual - This is your target)
 

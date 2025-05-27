@@ -45,6 +45,8 @@ random.seed(42)
 class MmWaveISACEnv(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 30}
 
+    # Inside class MmWaveISACEnv:
+
     def __init__(self):
         super(MmWaveISACEnv, self).__init__()
 
@@ -54,47 +56,33 @@ class MmWaveISACEnv(gym.Env):
         self.num_bs_antennas_sqrt_cols = 8
         self.num_bs_antennas = self.num_bs_antennas_sqrt_rows * self.num_bs_antennas_sqrt_cols
         
-        # 1. Initialize self.bs_array (BS Antenna)
+        # 1. Initialize Antenna Arrays
         try:
-            # Using your current import for PanelArray
             self.bs_array = PanelArray( 
                 num_rows_per_panel=self.num_bs_antennas_sqrt_rows,
                 num_cols_per_panel=self.num_bs_antennas_sqrt_cols,
                 polarization="dual",
                 polarization_type="cross",
-                antenna_pattern="38.901", # Standard 3GPP pattern
+                antenna_pattern="38.901",
                 carrier_frequency=self.carrier_frequency
             )
             print("Sionna PanelArray for BS initialized successfully.") 
-        except NameError as e: 
-            print(f"CRITICAL ERROR: NameError during PanelArray initialization. Is PanelArray imported correctly? Error: {e}")
-            sys.exit(1)
-        except Exception as e: 
-            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray for BS: {e}")
-            sys.exit(1)
-
-        # 2. Initialize self.ut_array (UE/UT Antenna, configured as omni-like PanelArray)
-        try:
-            # Using your current import for PanelArray
             self.ut_array = PanelArray(
-                num_rows_per_panel=1,       # Single element for omni-like
-                num_cols_per_panel=1,       # Single element for omni-like
-                polarization='single',      # Simpler for UT
-                polarization_type='V',      # Example: Vertical
-                antenna_pattern='omni',     # Specify omni pattern
+                num_rows_per_panel=1,
+                num_cols_per_panel=1,
+                polarization='single',
+                polarization_type='V',
+                antenna_pattern='omni',
                 carrier_frequency=self.carrier_frequency
             )
             print("Sionna PanelArray for UT (omni) initialized successfully.")
-        except NameError as e: 
-            print(f"CRITICAL ERROR: NameError during PanelArray (for UT) initialization. Is PanelArray imported correctly? Error: {e}")
-            sys.exit(1)
-        except Exception as e:
-            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray for UT: {e}")
+        except Exception as e: 
+            print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray objects: {e}")
             sys.exit(1)
 
-        # 3. Define other necessary parameters
-        self.num_user = 1
-        self.num_attacker = 1
+        # 2. Define other necessary parameters, including initial positions
+        self.num_user = 1 
+        self.num_bs = 1   
         self.tx_power_dbm = 20.0
         self.tx_power_watts = 10**((self.tx_power_dbm - 30) / 10)
         self.noise_power_db_per_hz = -174.0
@@ -103,9 +91,13 @@ class MmWaveISACEnv(gym.Env):
         self.sensing_range_max = 150.0
         self.max_steps_per_episode = 100
         
-        # 4. Now initialize self.channel_model_core using self.bs_array and self.ut_array
+        # Define initial positions BEFORE they are used in set_topology or UMa
+        self.bs_position = tf.constant([[0.0, 0.0, 10.0]], dtype=tf.float32)
+        self.user_position_init = np.array([[50.0, 10.0, 1.5]], dtype=np.float32) # Defined here
+        self.attacker_position_init = np.array([[60.0, -15.0, 1.5]], dtype=np.float32) # Defined here
+
+        # 3. Initialize UMa channel model
         try:
-            # Applying the definitive UMa constructor parameters for Sionna 1.0.2
             self.channel_model_core = UMa(
                 carrier_frequency=self.carrier_frequency,
                 o2i_model="low",
@@ -113,20 +105,40 @@ class MmWaveISACEnv(gym.Env):
                 bs_array=self.bs_array,
                 direction="downlink",     
                 enable_pathloss=True,     
-                enable_shadow_fading=True 
-                # Removed always_generate_lsp=True, reverting to default (False)
+                enable_shadow_fading=True
             )
-            print("Sionna UMa channel model initialized successfully.")
-            
-        except TypeError as e:
-             print(f"CRITICAL ERROR: TypeError during Sionna UMa channel model initialization: {e}")
-             print("This implies a continued mismatch with UMa constructor arguments for Sionna 1.0.2. "
-                   "The expected parameters based on your latest info are: "
-                   "carrier_frequency, o2i_model, ut_array (PanelArray), bs_array (PanelArray), direction, "
-                   "enable_pathloss, enable_shadow_fading, always_generate_lsp, precision.")
-             sys.exit(1)
+            print("Sionna UMa channel model object created successfully.")
         except Exception as e:
-            print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model (non-TypeError): {e}")
+            print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model object: {e}")
+            sys.exit(1)
+
+        # 4. Set initial topology
+        try:
+            initial_ut_loc = tf.reshape(self.user_position_init, [1, self.num_user, 3]) # Now self.user_position_init exists
+            
+            if self.bs_position.shape == (1,3) and self.num_bs == 1:
+                initial_bs_loc_for_set_topology = tf.expand_dims(self.bs_position, axis=1) 
+            else:
+                # Assuming self.bs_position might already be [1,1,3] or other logic needed
+                initial_bs_loc_for_set_topology = tf.reshape(self.bs_position, [1, self.num_bs, 3])
+
+
+            initial_ut_orientations = tf.zeros([1, self.num_user, 3], dtype=tf.float32)
+            initial_bs_orientations = tf.zeros([1, self.num_bs, 3], dtype=tf.float32)
+            initial_ut_velocities = tf.zeros([1, self.num_user, 3], dtype=tf.float32)
+            initial_in_state = tf.zeros([1, self.num_user], dtype=tf.bool)
+
+            self.channel_model_core.set_topology(
+                ut_loc=initial_ut_loc,
+                bs_loc=initial_bs_loc_for_set_topology,
+                ut_orientations=initial_ut_orientations,
+                bs_orientations=initial_bs_orientations,
+                ut_velocities=initial_ut_velocities,
+                in_state=initial_in_state
+            )
+            print("Sionna UMa channel model topology set successfully.")
+        except Exception as e:
+            print(f"CRITICAL ERROR: Failed to set topology for Sionna UMa channel model: {e}")
             sys.exit(1)
         
         # 5. Define State and Action Spaces and other instance variables
@@ -138,10 +150,7 @@ class MmWaveISACEnv(gym.Env):
         self.action_space = spaces.Discrete(self.num_discrete_actions)
         self.beam_angle_delta_rad = np.deg2rad(5)
 
-        self.bs_position = tf.constant([[0.0, 0.0, 10.0]], dtype=tf.float32)
-        self.user_position_init = np.array([[50.0, 10.0, 1.5]], dtype=np.float32)
-        self.attacker_position_init = np.array([[60.0, -15.0, 1.5]], dtype=np.float32)
-
+        # These are now tf.Variables, their initial value is set from *_init arrays
         self.user_position = tf.Variable(self.user_position_init, dtype=tf.float32)
         self.attacker_position = tf.Variable(self.attacker_position_init, dtype=tf.float32)
 
@@ -168,19 +177,12 @@ class MmWaveISACEnv(gym.Env):
 
     @tf.function(reduce_retracing=True)
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
-        # current shapes: user_pos_in is [1,3], self.bs_position is [1,3]
-        # Sionna's UMa expects locs: [batch_size, num_devices_per_link_end, 3]
-        # For a single BS and single UE/Attacker per call (batch_size=1 for the DRL step):
-        # Reshape to [batch_size=1, num_devices=1, num_coords=3]
-        
-        current_batch_size = tf.shape(user_pos_in)[0] # Should be 1 in this setup
+        current_batch_size = tf.shape(user_pos_in)[0] 
 
         bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, 1, 3])
         user_loc_reshaped = tf.reshape(user_pos_in, [current_batch_size, 1, 3])
         attacker_loc_reshaped = tf.reshape(attacker_pos_in, [current_batch_size, 1, 3])
 
-        # Orientations and velocities should also match this new rank
-        # Assuming [yaw, pitch, roll] = [0,0,0] for simplicity
         bs_orientation = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
         bs_velocity = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
         
@@ -190,30 +192,42 @@ class MmWaveISACEnv(gym.Env):
         ut_orientation_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
         ut_velocity_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
 
-        bs_config = (bs_loc_reshaped, bs_orientation, bs_velocity)
-        ut_config_user = (user_loc_reshaped, ut_orientation_user, ut_velocity_user)
-        ut_config_attacker = (attacker_loc_reshaped, ut_orientation_attacker, ut_velocity_attacker)
+        bs_config_tuple = (bs_loc_reshaped, bs_orientation, bs_velocity)
+        ut_config_user_tuple = (user_loc_reshaped, ut_orientation_user, ut_velocity_user)
+        ut_config_attacker_tuple = (attacker_loc_reshaped, ut_orientation_attacker, ut_velocity_attacker)
 
-        # Optional: Print shapes for debugging within tf.function (prints during tracing or graph execution)
-        # tf.print("BS loc shape:", tf.shape(bs_loc_reshaped), "UT loc shape:", tf.shape(user_loc_reshaped), output_stream=sys.stderr)
+        num_time_samples_val = 1 
+        sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32) 
 
-        h_user_time_all_paths, _ = self.channel_model_core(bs_config, ut_config_user)
-        # h_user_time_all_paths shape: [batch_size, num_rx (links), num_rx_ant, num_tx (links), num_tx_ant, num_paths, num_time_steps]
-        # For batch_size=1, num_rx_links=1 (for this call), num_tx_links=1:
-        h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0] # Shape: [num_ue_antennas, num_bs_antennas]
+        # --- APPLIED NEEDFUL CHANGES HERE ---
+        # Pass ALL arguments by keyword to remove ambiguity for Autograph
+        h_user_time_all_paths, _ = self.channel_model_core(
+            bs_config=bs_config_tuple,            # Explicitly named
+            ut_config=ut_config_user_tuple,       # Explicitly named
+            num_time_samples=num_time_samples_val,
+            sampling_frequency=sampling_frequency_val
+            # Add other optional __call__ args by keyword if needed, e.g., los_requested=...
+        )
         
-        h_attacker_time_all_paths, _ = self.channel_model_core(bs_config, ut_config_attacker)
-        h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0] # Shape: [num_ue_antennas, num_bs_antennas]
+        h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0]
 
-        steering_vec = self._get_steering_vector(current_beam_angles_tf_in) # Shape [num_bs_antennas]
-        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9) # Shape [num_bs_antennas]
-        precoder_w = tf.expand_dims(precoder_w, axis=1) # Shape [num_bs_antennas, 1] for matmul
+        h_attacker_time_all_paths, _ = self.channel_model_core(
+            bs_config=bs_config_tuple,            # Explicitly named
+            ut_config=ut_config_attacker_tuple,   # Explicitly named
+            num_time_samples=num_time_samples_val,
+            sampling_frequency=sampling_frequency_val
+            # Add other optional __call__ args by keyword if needed
+        )
+        h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0]
+        # --- END OF APPLIED CHANGES ---
 
-        # Assuming SIMO for simplicity at UE (or just taking first UE antenna output)
-        h_user_effective_row = tf.cast(h_user[0,:], tf.complex64) # Take first UE antenna: shape [num_bs_antennas]
-        h_attacker_effective_row = tf.cast(h_attacker[0,:], tf.complex64) # Shape [num_bs_antennas]
+        steering_vec = self._get_steering_vector(current_beam_angles_tf_in)
+        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)
+        precoder_w = tf.expand_dims(precoder_w, axis=1)
 
-        # Squeeze precoder_w to ensure proper element-wise multiplication if h_..._row is also [num_bs_antennas]
+        h_user_effective_row = tf.cast(h_user[0,:], tf.complex64) 
+        h_attacker_effective_row = tf.cast(h_attacker[0,:], tf.complex64)
+
         y_user_eff_scalar = tf.reduce_sum(h_user_effective_row * tf.squeeze(precoder_w))
         y_attacker_eff_scalar = tf.reduce_sum(h_attacker_effective_row * tf.squeeze(precoder_w))
         

@@ -45,28 +45,59 @@ random.seed(42)
 class MmWaveISACEnv(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 30}
 
-    # Inside class MmWaveISACEnv:
-
     def __init__(self):
         super(MmWaveISACEnv, self).__init__()
 
         self.carrier_frequency = 28e9
         self.bandwidth = 100e6 
-        self.num_bs_antennas_sqrt_rows = 8
-        self.num_bs_antennas_sqrt_cols = 8
-        self.num_bs_antennas = self.num_bs_antennas_sqrt_rows * self.num_bs_antennas_sqrt_cols
+        self.num_bs_antennas_sqrt_rows = 8 # Physical rows
+        self.num_bs_antennas_sqrt_cols = 8 # Physical columns
+        # If dual polarized, total antenna elements/ports might be rows*cols*2
+        # Let's assume PanelArray structure implies num_bs_antennas is total feeds
+        # For an 8x8 dual-pol panel, this would typically be 8*8*2 = 128.
+        # If self.num_bs_antennas is meant to be 64, it implies a single pol view
+        # or a specific way PanelArray counts elements.
+        # SIONA SAYED's fix for sv uses tf.ensure_shape(sv, [self.num_bs_antennas]).
+        # We'll proceed assuming self.num_bs_antennas (currently 64) is the target size for sv.
+        # This means ant_pol1.field and ant_pol2.field (squeezed) should be shape [32] each if concatenated.
+        # This implies the PanelArray's ant_pol1 and ant_pol2 each represent 32 elements.
+        # This is consistent if num_bs_antennas_sqrt_rows * num_bs_antennas_sqrt_cols refers to locations,
+        # and each location is dual-pol, giving total_elements = locations * 2.
+        # No, PanelArray num_rows_per_panel * num_cols_per_panel is total elements for *that panel object*.
+        # So, self.bs_array.ant_pol1 (which is an Antenna object) will have num_bs_antennas_sqrt_rows * num_bs_antennas_sqrt_cols elements.
+        # And ant_pol2 will have the same.
+        # Concatenating them will give 2 * (rows*cols) elements.
+        # So, self.num_bs_antennas should be redefined if we use SIONA SAYED's concat fix.
+
+        # Re-evaluating based on PanelArray structure:
+        # If num_rows_per_panel=8, num_cols_per_panel=8, then self.bs_array.ant_pol1 has 64 elements.
+        # And self.bs_array.ant_pol2 has 64 elements.
+        # Concatenating them makes a vector of 128 elements.
+        # So, self.num_bs_antennas should be 128 if we use that concatenation.
+        # Let's adjust this for consistency with the steering vector fix.
+
+        self.num_bs_physical_rows = 8
+        self.num_bs_physical_cols = 8
         
         # 1. Initialize Antenna Arrays
         try:
             self.bs_array = PanelArray( 
-                num_rows_per_panel=self.num_bs_antennas_sqrt_rows,
-                num_cols_per_panel=self.num_bs_antennas_sqrt_cols,
+                num_rows_per_panel=self.num_bs_physical_rows, # Use the renamed variable
+                num_cols_per_panel=self.num_bs_physical_cols, # Use the renamed variable
                 polarization="dual",
                 polarization_type="cross",
                 antenna_pattern="38.901",
                 carrier_frequency=self.carrier_frequency
             )
             print("Sionna PanelArray for BS initialized successfully.") 
+            
+            # This defines the total number of antenna elements/ports the BS uses for beamforming
+            # If dual polarized, each physical location has 2 feeds.
+            # Assuming self.bs_array.num_ant gives the total number of ports for the dual-pol array
+            self.num_bs_antennas = self.bs_array.num_ant 
+            print(f"Total BS antenna ports defined: {self.num_bs_antennas}")
+
+
             self.ut_array = PanelArray(
                 num_rows_per_panel=1,
                 num_cols_per_panel=1,
@@ -83,6 +114,8 @@ class MmWaveISACEnv(gym.Env):
         # 2. Define other necessary parameters, including initial positions
         self.num_user = 1 
         self.num_bs = 1   
+        self.num_attacker = 1 # <<<< ADD THIS LINE HERE
+        
         self.tx_power_dbm = 20.0
         self.tx_power_watts = 10**((self.tx_power_dbm - 30) / 10)
         self.noise_power_db_per_hz = -174.0
@@ -91,10 +124,9 @@ class MmWaveISACEnv(gym.Env):
         self.sensing_range_max = 150.0
         self.max_steps_per_episode = 100
         
-        # Define initial positions BEFORE they are used in set_topology or UMa
         self.bs_position = tf.constant([[0.0, 0.0, 10.0]], dtype=tf.float32)
-        self.user_position_init = np.array([[50.0, 10.0, 1.5]], dtype=np.float32) # Defined here
-        self.attacker_position_init = np.array([[60.0, -15.0, 1.5]], dtype=np.float32) # Defined here
+        self.user_position_init = np.array([[50.0, 10.0, 1.5]], dtype=np.float32)
+        self.attacker_position_init = np.array([[60.0, -15.0, 1.5]], dtype=np.float32)
 
         # 3. Initialize UMa channel model
         try:
@@ -102,7 +134,7 @@ class MmWaveISACEnv(gym.Env):
                 carrier_frequency=self.carrier_frequency,
                 o2i_model="low",
                 ut_array=self.ut_array,
-                bs_array=self.bs_array,
+                bs_array=self.bs_array, # Pass the BS PanelArray instance
                 direction="downlink",     
                 enable_pathloss=True,     
                 enable_shadow_fading=True
@@ -114,15 +146,8 @@ class MmWaveISACEnv(gym.Env):
 
         # 4. Set initial topology
         try:
-            initial_ut_loc = tf.reshape(self.user_position_init, [1, self.num_user, 3]) # Now self.user_position_init exists
-            
-            if self.bs_position.shape == (1,3) and self.num_bs == 1:
-                initial_bs_loc_for_set_topology = tf.expand_dims(self.bs_position, axis=1) 
-            else:
-                # Assuming self.bs_position might already be [1,1,3] or other logic needed
-                initial_bs_loc_for_set_topology = tf.reshape(self.bs_position, [1, self.num_bs, 3])
-
-
+            initial_ut_loc = tf.reshape(self.user_position_init, [1, self.num_user, 3])
+            initial_bs_loc = tf.reshape(self.bs_position, [1, self.num_bs, 3])
             initial_ut_orientations = tf.zeros([1, self.num_user, 3], dtype=tf.float32)
             initial_bs_orientations = tf.zeros([1, self.num_bs, 3], dtype=tf.float32)
             initial_ut_velocities = tf.zeros([1, self.num_user, 3], dtype=tf.float32)
@@ -130,7 +155,7 @@ class MmWaveISACEnv(gym.Env):
 
             self.channel_model_core.set_topology(
                 ut_loc=initial_ut_loc,
-                bs_loc=initial_bs_loc_for_set_topology,
+                bs_loc=initial_bs_loc,
                 ut_orientations=initial_ut_orientations,
                 bs_orientations=initial_bs_orientations,
                 ut_velocities=initial_ut_velocities,
@@ -142,6 +167,7 @@ class MmWaveISACEnv(gym.Env):
             sys.exit(1)
         
         # 5. Define State and Action Spaces and other instance variables
+        # ... (rest of __init__ is the same)
         low_obs = np.array([-30.0, -np.pi, -np.pi/2, -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0], dtype=np.float32)
         high_obs = np.array([30.0, np.pi, np.pi/2, np.pi, np.pi/2, self.sensing_range_max, 1.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
@@ -150,7 +176,6 @@ class MmWaveISACEnv(gym.Env):
         self.action_space = spaces.Discrete(self.num_discrete_actions)
         self.beam_angle_delta_rad = np.deg2rad(5)
 
-        # These are now tf.Variables, their initial value is set from *_init arrays
         self.user_position = tf.Variable(self.user_position_init, dtype=tf.float32)
         self.attacker_position = tf.Variable(self.attacker_position_init, dtype=tf.float32)
 
@@ -158,125 +183,291 @@ class MmWaveISACEnv(gym.Env):
         self.current_isac_effort = 0.5
         self.current_step = 0
 
+
+    # Inside class MmWaveISACEnv:
+
+    def _get_steering_vector(self, angles_rad_tf):
+        """
+        Computes the steering vector for the antenna array.
+        angles_rad_tf: TensorFlow tensor [azimuth_rad, elevation_rad]
+        Returns: Steering vector of shape [self.num_bs_antennas] (complex64)
+        """
+        print("DEBUG: Entering _get_steering_vector")
+        azimuth_rad = tf.expand_dims(angles_rad_tf[0], axis=0)
+        zenith_rad = tf.expand_dims(np.pi/2 - angles_rad_tf[1], axis=0)
+
+        # Get field patterns for first polarization (ant_pol1)
+        # Assuming self.bs_array.ant_pol1.field returns a tuple (f_theta, f_phi)
+        # where each is a tensor representing the field component.
+        # This part was based on your debug prints "field_output_1 type: <class 'tuple'>, length: 2"
+        field_output_1 = self.bs_array.ant_pol1.field(theta=zenith_rad, phi=azimuth_rad)
+        # print(f"  DEBUG: field_output_1 type: {type(field_output_1)}, content: {field_output_1}") # Further debug if needed
+        
+        # Check if field_output_1 is indeed a tuple of two tensors
+        if not (isinstance(field_output_1, tuple) and len(field_output_1) == 2):
+            print(f"  ERROR: Unexpected output from self.bs_array.ant_pol1.field(). Expected tuple of 2 tensors, got {type(field_output_1)}")
+            # Fallback to a zero steering vector to avoid crashing, but this needs fixing
+            return tf.zeros([self.num_bs_antennas], dtype=tf.complex64)
+
+        f_theta_1, f_phi_1 = field_output_1
+        # print(f"  DEBUG: f_theta_1 shape: {f_theta_1.shape}, f_phi_1 shape: {f_phi_1.shape}")
+
+        f_theta_1 = tf.squeeze(f_theta_1, axis=0) # Squeeze batch dimension for angles
+        f_phi_1 = tf.squeeze(f_phi_1, axis=0)   # Squeeze batch dimension for angles
+
+        expected_elements_per_pol = self.num_bs_antennas // 2 
+
+        num_rows = tf.cast(self.num_bs_physical_rows, dtype=tf.float32) # Cast num_rows for calculation
+        num_cols = tf.cast(self.num_bs_physical_cols, dtype=tf.float32) # Cast num_cols for calculation
+        
+        # --- START OF NEEDFUL CHANGE ---
+        row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - tf.cast((num_rows - 1.0) / 2.0, dtype=tf.float32)
+        col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - tf.cast((num_cols - 1.0) / 2.0, dtype=tf.float32)
+        # --- END OF NEEDFUL CHANGE ---
+
+        d_v = d_h = 0.5  
+        wavelength = 3e8 / self.carrier_frequency 
+        k = 2 * np.pi / wavelength  
+
+        row_grid, col_grid = tf.meshgrid(row_indices, col_indices)
+        positions_y = row_grid * d_v * wavelength 
+        positions_x = col_grid * d_h * wavelength  
+        positions_z = tf.zeros_like(positions_x)  
+        positions = tf.stack([positions_x, positions_y, positions_z], axis=-1) 
+        positions = tf.reshape(positions, [-1, 3]) 
+
+        sin_theta = tf.sin(zenith_rad) # zenith_rad is already [1]
+        cos_theta = tf.cos(zenith_rad)
+        sin_phi = tf.sin(azimuth_rad)  # azimuth_rad is already [1]
+        cos_phi = tf.cos(azimuth_rad)
+        
+        # Ensure direction vector is correctly shaped for broadcasting with positions
+        # direction should be [1, 3] to multiply with positions [64, 3] for reduce_sum
+        direction = tf.stack([sin_theta[0] * cos_phi[0], 
+                              sin_theta[0] * sin_phi[0], 
+                              cos_theta[0]], axis=0) # Creates a [3] vector
+        direction = tf.expand_dims(direction, axis=0) # Makes it [1, 3]
+
+        phase_shifts = k * tf.reduce_sum(positions * direction, axis=-1) 
+        array_response = tf.exp(tf.complex(0.0, phase_shifts))  
+
+        # Assuming f_theta_1 is the scalar (or element-wise) gain for this polarization
+        # and it's for vertical polarization. The shape of f_theta_1 after squeeze needs to be compatible.
+        # If f_theta_1 from .field() is a scalar complex gain for that direction:
+        sv_pol1 = array_response * tf.cast(tf.squeeze(f_theta_1), tf.complex64) # Squeeze f_theta_1 further if it was [1]
+        # print(f"  DEBUG: sv_pol1 shape: {sv_pol1.shape}")
+
+        if sv_pol1.shape[0] != expected_elements_per_pol:
+            print(f"  ERROR: sv_pol1 has {sv_pol1.shape[0]} elements, expected {expected_elements_per_pol}")
+            # Fallback or error handling
+            sv_pol1 = tf.zeros([expected_elements_per_pol], dtype=tf.complex64)
+
+
+        if self.bs_array.polarization == "dual" and hasattr(self.bs_array, 'ant_pol2'):
+            field_output_2 = self.bs_array.ant_pol2.field(theta=zenith_rad, phi=azimuth_rad)
+            # print(f"  DEBUG: field_output_2 type: {type(field_output_2)}, content: {field_output_2}")
+            if not (isinstance(field_output_2, tuple) and len(field_output_2) == 2):
+                print(f"  ERROR: Unexpected output from self.bs_array.ant_pol2.field(). Expected tuple of 2 tensors, got {type(field_output_2)}")
+                sv_pol2 = tf.zeros([expected_elements_per_pol], dtype=tf.complex64)
+            else:
+                f_theta_2, f_phi_2 = field_output_2
+                # print(f"  DEBUG: f_theta_2 shape: {f_theta_2.shape}, f_phi_2 shape: {f_phi_2.shape}")
+                f_theta_2 = tf.squeeze(f_theta_2, axis=0)
+                f_phi_2 = tf.squeeze(f_phi_2, axis=0)
+                # Assuming f_phi_2 is for horizontal polarization if f_theta_1 was vertical
+                sv_pol2 = array_response * tf.cast(tf.squeeze(f_phi_2), tf.complex64)
+                # print(f"  DEBUG: sv_pol2 shape: {sv_pol2.shape}")
+
+                if sv_pol2.shape[0] != expected_elements_per_pol:
+                    print(f"  ERROR: sv_pol2 has {sv_pol2.shape[0]} elements, expected {expected_elements_per_pol}")
+                    sv_pol2 = tf.zeros([expected_elements_per_pol], dtype=tf.complex64)
+
+            if self.bs_array.polarization_type == "VH" or self.bs_array.polarization_type == "cross": # Assuming cross might mean V/H components
+                sv = tf.concat([sv_pol1, sv_pol2], axis=0)
+            else: 
+                sv = sv_pol1 # Fallback to single pol if combination is unclear
+            # print(f"  DEBUG: Total steering vector shape (dual-pol): {sv.shape}")
+        else:
+            sv = sv_pol1
+            # print(f"  DEBUG: Total steering vector shape (single-pol): {sv.shape}")
+
+        sv = tf.cast(sv, tf.complex64)
+        sv = tf.ensure_shape(sv, [self.num_bs_antennas])
+        # print(f"Final steering vector shape: {sv.shape}")
+
+        return sv
+
+    #@tf.function(reduce_retracing=True) # Keep commented out for now
+    def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
+        current_batch_size = tf.shape(user_pos_in)[0] 
+
+        bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, self.num_bs, 3])
+        user_loc_reshaped = tf.reshape(user_pos_in, [current_batch_size, self.num_user, 3])
+        attacker_loc_reshaped = tf.reshape(attacker_pos_in, [current_batch_size, self.num_attacker, 3]) # Use self.num_attacker
+
+        bs_orientation = tf.zeros([current_batch_size, self.num_bs, 3], dtype=tf.float32)
+        bs_velocity = tf.zeros([current_batch_size, self.num_bs, 3], dtype=tf.float32)
+        
+        ut_orientation_user = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
+        ut_velocity_user = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
+        in_state_user = tf.zeros([current_batch_size, self.num_user], dtype=tf.bool) 
+        
+        ut_orientation_attacker = tf.zeros([current_batch_size, self.num_attacker, 3], dtype=tf.float32)
+        ut_velocity_attacker = tf.zeros([current_batch_size, self.num_attacker, 3], dtype=tf.float32)
+        in_state_attacker = tf.zeros([current_batch_size, self.num_attacker], dtype=tf.bool)
+
+        num_time_samples_val = 1 
+        sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32) 
+
+        # 1. Set topology for the BS-User link
+        self.channel_model_core.set_topology(
+            ut_loc=user_loc_reshaped,
+            bs_loc=bs_loc_reshaped,
+            ut_orientations=ut_orientation_user,
+            bs_orientations=bs_orientation,
+            ut_velocities=ut_velocity_user,
+            in_state=in_state_user
+        )
+        # Get channel for user
+        h_user_time_all_paths, _ = self.channel_model_core(
+            num_time_samples_val,
+            sampling_frequency_val
+        )
+        # h_user_time_all_paths shape: [batch, num_rx_links=1, num_ut_ant_elements, num_tx_links=1, num_bs_ant_elements, num_paths, num_time_samples]
+        # For UMa, num_ut_ant_elements comes from self.ut_array.num_ant
+        # For UMa, num_bs_ant_elements comes from self.bs_array.num_ant
+        # Slicing: [0,0 (link), :(ut_ant), 0 (link), :(bs_ant), 0 (path), 0 (time_sample)]
+        h_user = h_user_time_all_paths[0, 0, 0, 0, :, 0, 0] # Assuming UT is single antenna (0-th element) 
+                                                          # and we want channel vector to all BS antennas for first path, first sample.
+                                                          # Shape will be [self.num_bs_antennas]
+
+        # 2. Set topology for the BS-Attacker link
+        self.channel_model_core.set_topology(
+            ut_loc=attacker_loc_reshaped, 
+            bs_loc=bs_loc_reshaped,
+            ut_orientations=ut_orientation_attacker,
+            bs_orientations=bs_orientation,
+            ut_velocities=ut_velocity_attacker,
+            in_state=in_state_attacker
+        )
+        # Get channel for attacker
+        h_attacker_time_all_paths, _ = self.channel_model_core(
+            num_time_samples_val,
+            sampling_frequency_val
+        )
+        h_attacker = h_attacker_time_all_paths[0, 0, 0, 0, :, 0, 0] # Same slicing logic for attacker
+
+        # --- Beamforming and Power Calculation ---
+        steering_vec = self._get_steering_vector(current_beam_angles_tf_in) # Shape [self.num_bs_antennas]
+        steering_vec = tf.reshape(steering_vec, [-1]) # Ensure it's 1D, should already be.
+
+        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)
+        precoder_w = tf.reshape(precoder_w, [-1, 1])  # Shape [self.num_bs_antennas, 1]
+        
+        # h_user and h_attacker are now effectively row vectors of shape [self.num_bs_antennas]
+        # (after selecting the 0-th UT antenna element's perspective)
+        h_user_row_vec = tf.cast(h_user, tf.complex64)       # Shape [self.num_bs_antennas]
+        h_attacker_row_vec = tf.cast(h_attacker, tf.complex64) # Shape [self.num_bs_antennas]
+
+        # Effective scalar channel after beamforming: h_row_vec * w_col_vec
+        y_user_eff_scalar = tf.reduce_sum(h_user_row_vec * tf.squeeze(precoder_w)) # Squeeze precoder_w to [self.num_bs_antennas] for element-wise product
+        y_attacker_eff_scalar = tf.reduce_sum(h_attacker_row_vec * tf.squeeze(precoder_w))
+        
+        signal_power_user = tf.abs(y_user_eff_scalar)**2 * self.tx_power_watts
+        signal_power_attacker = tf.abs(y_attacker_eff_scalar)**2 * self.tx_power_watts
+    
+        return signal_power_user, signal_power_attacker
+
+    def _get_state(self):
+        print("DEBUG: Entering _get_state()")
+        try:
+            signal_power_user_tf, signal_power_attacker_tf = self._get_channel_and_powers( # Corrected to unpack two values
+                self.current_beam_angles_tf, self.user_position, self.attacker_position
+            )
+            print("DEBUG: _get_channel_and_powers call successful")
+            signal_power_user = signal_power_user_tf.numpy()
+
+            sinr_user_val = 10 * log10(tf.cast(signal_power_user / self.no_lin, tf.float32)).numpy() if signal_power_user > 1e-12 else -30.0
+            sinr_user_clipped = np.clip(sinr_user_val, -30.0, 30.0)
+
+            sensing_noise_std_factor = 1.0 - (self.current_isac_effort * 0.75)
+            bs_pos_np = self.bs_position.numpy()[0]
+            attacker_pos_np = self.attacker_position.numpy()[0]
+
+            true_attacker_vector = attacker_pos_np - bs_pos_np
+            true_attacker_range = np.linalg.norm(true_attacker_vector)
+            true_attacker_azimuth = np.arctan2(true_attacker_vector[1], true_attacker_vector[0])
+            true_attacker_elevation = np.arctan2(true_attacker_vector[2], np.linalg.norm(true_attacker_vector[0:2]))
+
+            detected_az, detected_el, detected_range, confidence = -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0
+            
+            if true_attacker_range <= self.sensing_range_max and true_attacker_range > 0:
+                prob_detection = self.current_isac_effort * np.exp(-0.02 * true_attacker_range)
+                if self.np_random.random() < prob_detection: # Make sure self.np_random is initialized by super().reset()
+                    confidence = prob_detection + self.np_random.normal(0, 0.1)
+                    confidence = np.clip(confidence, 0.0, 1.0)
+                    noise_az = self.np_random.normal(0, np.deg2rad(20) * sensing_noise_std_factor)
+                    noise_el = self.np_random.normal(0, np.deg2rad(20) * sensing_noise_std_factor)
+                    noise_range = self.np_random.normal(0, 10.0 * sensing_noise_std_factor)
+                    detected_az = true_attacker_azimuth + noise_az
+                    detected_el = true_attacker_elevation + noise_el
+                    detected_range = max(0.1, true_attacker_range + noise_range)
+            
+            state_array = np.array([
+                sinr_user_clipped,
+                self.current_beam_angles_tf[0].numpy(), self.current_beam_angles_tf[1].numpy(),
+                np.clip(detected_az, -np.pi, np.pi), 
+                np.clip(detected_el, -np.pi/2, np.pi/2),
+                np.clip(detected_range, 0, self.sensing_range_max),
+                confidence
+            ], dtype=np.float32)
+            print(f"DEBUG: _get_state is returning state_array of shape {state_array.shape}")
+            return state_array
+        except Exception as e_get_state:
+            print(f"CRITICAL DEBUG: Exception inside _get_state(): {e_get_state}")
+            import traceback
+            traceback.print_exc()
+            # To explicitly show that an error here might cause reset to misbehave
+            # In a real scenario, you might re-raise or handle more gracefully
+            return None # Explicitly return None if _get_state fails internally
     def reset(self, seed=None, options=None):
-        super().reset(seed=seed)
+        print("DEBUG: Entering MmWaveISACEnv.reset()")
+        super().reset(seed=seed) # This should initialize self.np_random
         self.current_beam_angles_tf.assign([0.0, 0.0])
         self.current_isac_effort = 0.5
+        
+        # Check if np_random was initialized
+        if not hasattr(self, 'np_random') or self.np_random is None:
+            print("CRITICAL DEBUG: self.np_random not initialized by super().reset(). Initializing manually.")
+            # Fallback seeding if super().reset() didn't work as expected for np_random
+            # This is a gym internal detail, but good to be defensive for debugging
+            self.np_random, _ = gym.utils.seeding.np_random(seed)
+
+
         user_pos_offset = self.np_random.normal(0, 1.0, 3).reshape(1,3).astype(np.float32)
         attacker_pos_offset = self.np_random.normal(0, 2.0, 3).reshape(1,3).astype(np.float32)
         self.user_position.assign(self.user_position_init + user_pos_offset)
         self.attacker_position.assign(self.attacker_position_init + attacker_pos_offset)
         self.current_step = 0
-        return self._get_state(), {}
-
-    def _get_steering_vector(self, angles_rad_tf):
-        azimuth_rad = tf.constant(angles_rad_tf[0], shape=(1,))
-        zenith_rad = tf.constant(np.pi/2 - angles_rad_tf[1], shape=(1,))
-        sv = self.bs_array.steering_vector(azimuth_rad, zenith_rad)
-        return tf.cast(tf.squeeze(sv, axis=[0,2]), tf.complex64) # Squeeze batch and stream dim
-
-    #@tf.function(reduce_retracing=True) # Keep commented out for now to ensure Python-level correctness first
-    def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
-        current_batch_size = tf.shape(user_pos_in)[0] 
-
-        bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, 1, 3])
-        user_loc_reshaped = tf.reshape(user_pos_in, [current_batch_size, 1, 3])
-        attacker_loc_reshaped = tf.reshape(attacker_pos_in, [current_batch_size, 1, 3])
-
-        bs_orientation = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
-        bs_velocity = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
         
-        ut_orientation_user = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
-        ut_velocity_user = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
-        
-        ut_orientation_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
-        ut_velocity_attacker = tf.zeros([current_batch_size, 1, 3], dtype=tf.float32)
+        print("DEBUG: Calling self._get_state() from reset()")
+        obs = self._get_state()
+        info = {} # Standard Gym practice
 
-        # These are the variable names already defined in your function scope
-        bs_config = (bs_loc_reshaped, bs_orientation, bs_velocity)
-        ut_config_user = (user_loc_reshaped, ut_orientation_user, ut_velocity_user)
-        ut_config_attacker = (attacker_loc_reshaped, ut_orientation_attacker, ut_velocity_attacker)
+        if obs is None:
+            print("CRITICAL DEBUG: self._get_state() returned None. Reset will also effectively return None for the observation part.")
+            # This state will cause the unpack error if not handled.
+            # Forcing a valid return type for debugging:
+            # obs = self.observation_space.sample() # This would prevent the unpack error but hide the root cause.
+            # Let's allow it to fail to see the error if obs is None.
+            # The error "cannot unpack non-iterable NoneType object" implies `obs, info` could not be formed
+            # because the entire return of `reset` was `None`.
+            # However, if obs is None, then (None, {}) is returned.
+            # The error implies that reset() *itself* is returning a single None value.
 
-        num_time_samples_val = 1 
-        sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32) 
-
-        # --- CORRECTED CALLS USING YOUR DEFINED VARIABLE NAMES ---
-        # Pass bs_config and ut_config POSITIALLY, then OTHERS BY KEYWORD
-        h_user_time_all_paths, _ = self.channel_model_core(
-            bs_config,            # 1st Positional argument 
-            ut_config_user,       # 2nd Positional argument
-            num_time_samples=num_time_samples_val,       # Keyword argument
-            sampling_frequency=sampling_frequency_val      # Keyword argument
-        )
-        
-        h_user = h_user_time_all_paths[0, 0, :, 0, :, 0, 0]
-
-        h_attacker_time_all_paths, _ = self.channel_model_core(
-            bs_config,            # 1st Positional argument
-            ut_config_attacker,   # 2nd Positional argument
-            num_time_samples=num_time_samples_val,       # Keyword argument
-            sampling_frequency=sampling_frequency_val      # Keyword argument
-        )
-        h_attacker = h_attacker_time_all_paths[0, 0, :, 0, :, 0, 0]
-        # --- END OF CORRECTED CALLS ---
-
-        steering_vec = self._get_steering_vector(current_beam_angles_tf_in)
-        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)
-        precoder_w = tf.expand_dims(precoder_w, axis=1)
-
-        h_user_effective_row = tf.cast(h_user[0,:], tf.complex64) 
-        h_attacker_effective_row = tf.cast(h_attacker[0,:], tf.complex64)
-
-        y_user_eff_scalar = tf.reduce_sum(h_user_effective_row * tf.squeeze(precoder_w))
-        y_attacker_eff_scalar = tf.reduce_sum(h_attacker_effective_row * tf.squeeze(precoder_w))
-        
-        signal_power_user = tf.abs(y_user_eff_scalar)**2 * self.tx_power_watts
-        signal_power_attacker = tf.abs(y_attacker_eff_scalar)**2 * self.tx_power_watts
-        
-        return signal_power_user, signal_power_attacker
-
-    def _get_state(self):
-        signal_power_user_tf, _ = self._get_channel_and_powers(
-            self.current_beam_angles_tf, self.user_position, self.attacker_position
-        )
-        signal_power_user = signal_power_user_tf.numpy()
-
-        sinr_user_val = 10 * log10(tf.cast(signal_power_user / self.no_lin, tf.float32)).numpy() if signal_power_user > 1e-12 else -30.0
-        sinr_user_clipped = np.clip(sinr_user_val, -30.0, 30.0)
-
-        sensing_noise_std_factor = 1.0 - (self.current_isac_effort * 0.75)
-        bs_pos_np = self.bs_position.numpy()[0]
-        attacker_pos_np = self.attacker_position.numpy()[0]
-
-        true_attacker_vector = attacker_pos_np - bs_pos_np
-        true_attacker_range = np.linalg.norm(true_attacker_vector)
-        true_attacker_azimuth = np.arctan2(true_attacker_vector[1], true_attacker_vector[0])
-        true_attacker_elevation = np.arctan2(true_attacker_vector[2], np.linalg.norm(true_attacker_vector[0:2]))
-
-        detected_az, detected_el, detected_range, confidence = -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0
-        
-        if true_attacker_range <= self.sensing_range_max and true_attacker_range > 0:
-            prob_detection = self.current_isac_effort * np.exp(-0.02 * true_attacker_range)
-            if self.np_random.random() < prob_detection:
-                confidence = prob_detection + self.np_random.normal(0, 0.1)
-                confidence = np.clip(confidence, 0.0, 1.0)
-                noise_az = self.np_random.normal(0, np.deg2rad(20) * sensing_noise_std_factor)
-                noise_el = self.np_random.normal(0, np.deg2rad(20) * sensing_noise_std_factor)
-                noise_range = self.np_random.normal(0, 10.0 * sensing_noise_std_factor)
-                detected_az = true_attacker_azimuth + noise_az
-                detected_el = true_attacker_elevation + noise_el
-                detected_range = max(0.1, true_attacker_range + noise_range)
-        
-        state_array = np.array([
-            sinr_user_clipped,
-            self.current_beam_angles_tf[0].numpy(), self.current_beam_angles_tf[1].numpy(),
-            np.clip(detected_az, -np.pi, np.pi), 
-            np.clip(detected_el, -np.pi/2, np.pi/2),
-            np.clip(detected_range, 0, self.sensing_range_max),
-            confidence
-        ], dtype=np.float32)
-        return state_array
-
+        print(f"DEBUG: MmWaveISACEnv.reset() is about to return obs (type: {type(obs)}) and info (type: {type(info)})")
+        return obs, info
+    
     def step(self, action_idx):
         current_az_val, current_el_val = self.current_beam_angles_tf.numpy()
 

@@ -460,11 +460,11 @@ class MmWaveISACEnv(gym.Env):
 
 # DRL Agent (Double DQN)
 class DoubleDQNAgent:
-    def __init__(self, state_dim, action_n, learning_rate=0.0005, gamma=0.99,
+    def __init__(self, state_dim, action_n, learning_rate=0.0003, gamma=0.99,
                  epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=15000):
         self.state_dim = state_dim
         self.action_n = action_n
-        self.memory = deque(maxlen=20000)
+        self.memory = deque(maxlen=50000)
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end

@@ -9,7 +9,8 @@ import sys
 import pandas as pd
 import logging
 import os
-
+import time
+start_time = time.time()
 # Force disable oneDNN optimizations
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
@@ -278,10 +279,18 @@ class MmWaveISACEnv(gym.Env):
             signal_power_attacker = tf.abs(y_attacker_eff_scalar)**2 * self.tx_power_watts
             logging.debug(f"Signal power user: {signal_power_user.numpy()}, attacker: {signal_power_attacker.numpy()}")
 
+            # بررسی مقادیر غیرواقعی
+            if signal_power_user < 1e-12:
+                logging.warning("Signal power user too low, setting default SINR")
+                signal_power_user = tf.constant(1e-12, dtype=tf.float32)
+            if signal_power_attacker < 1e-12:
+                logging.warning("Signal power attacker too low, setting default")
+                signal_power_attacker = tf.constant(1e-12, dtype=tf.float32)
+
             return signal_power_user, signal_power_attacker
         except Exception as e:
             logging.error(f"Error in _get_channel_and_powers: {e}")
-            return tf.constant(0.0, dtype=tf.float32), tf.constant(0.0, dtype=tf.float32)
+            return tf.constant(1e-12, dtype=tf.float32), tf.constant(1e-12, dtype=tf.float32)
 
     def _get_state(self):
         logging.debug("Entering _get_state")
@@ -416,31 +425,32 @@ class MmWaveISACEnv(gym.Env):
     def _compute_reward(self, current_obs_state):
         sinr_user = current_obs_state[0]
         beam_az_rad = current_obs_state[1]
-        detected_attacker_az_rad = current_obs_state[2]
+        detected_attacker_rad = current_obs_state[2]
         detected_attacker_range_m = current_obs_state[3]
-        detection_confidence = current_obs_state[4]
+        detection_conf = current_obs_state[4]
 
-        reward = tf.clip_by_value(sinr_user / 4.0, -3.0, 3.0).numpy()
-        if sinr_user > 15.0:
-            reward += 2.0
-        if detection_confidence > 0.5 and self.current_step % 5 == 0:  # Cap frequency
-            reward += 1.0
+        reward = np.clip(sinr_user / 2.0, -6.0, 6.0)  # افزایش حساسیت
+        if sinr_user > 16: reward += 10.0  # پاداش قوی
+        elif sinr_user > 12: reward += 5.0
+        elif sinr_user > 8.0: reward += 2.0
+        if detection_conf > 0.6 and self.current_step % 5 == 0:  # سخت‌تر
+            reward += 1.5
 
-        if detection_confidence > 0.3 and detected_attacker_range_m > 0:
-            true_attacker_az_rad = current_obs_state[6]
-            doa_error_az = abs(detected_attacker_az_rad - true_attacker_az_rad)
-            doa_error_az = min(doa_error_az, 2*np.pi - doa_error_az)
-            reward += (1.0 - doa_error_az / np.pi) * 1.5 * detection_confidence
-            angle_diff_beam_to_detected_attacker_az = abs(beam_az_rad - detected_attacker_az_rad)
-            angle_diff_beam_to_detected_attacker_az = min(angle_diff_beam_to_detected_attacker_az, 2*np.pi - angle_diff_beam_to_detected_attacker_az)
-            reward -= (1.0 - angle_diff_beam_to_detected_attacker_az / np.pi) * 2.0 * detection_confidence
+        if detection_conf > 0.3 and detected_attacker_range_m > 0:
+            true_attacker_rad = current_obs_state[6]
+            doa_error_rad = abs(detected_attacker_rad - true_attacker_rad)
+            doa_error_rad = min(doa_error_rad, 2*np.pi - doa_error_rad)
+            reward += (1.0 - doa_error_rad / np.pi) * 2.0 * detection_conf
+            angle_diff_beam = abs(beam_rad - detected_attacker_rad)
+            angle_diff_beam = min(angle_diff_beam_rad, 2*np.pi - angle_diff_rad)
+            reward -= (1.0 - angle_diff_beam_rad / np.pi) * 1.5 * detection_conf
         else:
-            true_attacker_range_val = current_obs_state[5]
-            if true_attacker_range_val < self.sensing_range_max * 0.5:
-                reward -= 0.3
+            true_attacker_m = current_obs_state[5]
+            if true_attacker_m < self.sensing_range_m * 0.5:
+                reward -= 0.15  # جریمه کمتر
 
-        if self.current_isac_effort > 0.8: reward -= 0.1
-        elif self.current_isac_effort < 0.3: reward -= 0.05
+        if self.current_is > 0.85: reward -= 0.15
+        elif self.current_is < 0.35: reward -= 0.1
         return float(reward)
 
     def render(self, mode='human'):
@@ -460,18 +470,18 @@ class MmWaveISACEnv(gym.Env):
 
 # DRL Agent (Double DQN)
 class DoubleDQNAgent:
-    def __init__(self, state_dim, action_n, learning_rate=0.0003, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=15000):
-        self.state_dim = state_dim
+    def __init__(self, state_dim, action_n, learning_rate=0.00002, gamma=0.995,
+             epsilon_start=1.0, epsilon_end=0.15, epsilon_decay_steps=12000):
+        self.state_dim = int(state_dim)
         self.action_n = action_n
         self.memory = deque(maxlen=50000)
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end
-        self.epsilon_decay_value = (epsilon_start - epsilon_end) / epsilon_decay_steps
+        self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps
         self.current_learning_steps = 0
         self.learning_rate = learning_rate
-        self.batch_size = 32
+        self.batch_size = 24
 
         self.model = self._build_model()
         self.target_model = self._build_model()
@@ -480,13 +490,12 @@ class DoubleDQNAgent:
     def _build_model(self):
         model = keras.Sequential([
             keras.layers.Input(shape=(self.state_dim,)),
-            keras.layers.Dense(256, activation='relu'),
-            keras.layers.Dense(128, activation='relu'),
-            keras.layers.Dense(64, activation='relu'),
+            keras.layers.Dense(64, activation='relu'),  # تغییر از 256
+            keras.layers.Dense(32, activation='relu'),  # تغییر از 128
             keras.layers.Dense(self.action_n, activation='linear')
         ])
-        model.compile(loss='huber_loss',
-                      optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
+        model.compile(loss=tf.keras.losses.Huber(),
+                    optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
         return model
 
     def update_target_model(self):
@@ -556,6 +565,8 @@ def run_simulation():
     episode_data = []
     attack_detections = []
     total_training_steps = 0
+    early_stop_count = 0
+    early_stop_threshold = 50
 
     for e in range(episodes):
         current_state, _ = env.reset()
@@ -596,38 +607,49 @@ def run_simulation():
             avg_s = np.mean([d['Avg_SINR'] for d in episode_data[-print_freq_episodes:]])
             detection_rate = np.mean(attack_detections[-print_freq_episodes*env.max_steps_per_episode:]) * 100
             print(f"Ep: {e+1}/{episodes} | Avg Reward: {avg_r:.4f} | Avg SINR: {avg_s:.2f} dB | Detection Rate: {detection_rate:.2f}%")
+            if avg_s > 15.0 and detection_rate > 75.0:
+                early_stop_count += 1
+                if early_stop_count >= early_stop_threshold:
+                    print(f"Early stopping at episode {e+1} due to sustained high performance.")
+                    break
+            else:
+                early_stop_count = 0
 
         if (e + 1) % save_freq_episodes == 0:
             agent.save(f"drl_beam_simplified_ep{e+1}.weights.h5")
 
     df = pd.DataFrame(episode_data)
+    print(f"Total training time: {(time.time() - start_time)/60:.2f} minutes")
     df.to_csv('episode_results.csv', index=False)
     print("Episode results saved to 'episode_results.csv'")
-
-    # 
+    
     evaluation_data = []
-    for _ in range(20):
+    for _ in range(8):  
         state, _ = env.reset()
-        prev_isac_effort = env.current_isac_effort  #
-        env.current_beam_angles_tf.assign([0.0])
+        prev_isac_effort = env.current_isac_effort
+        env.current_beam_angles_tf.assign([0.])
         baseline_state = env._get_state()
         baseline_sinr = baseline_state[0]
-        baseline_detected = 1 if (baseline_state[4] > 0.5 and 0 < baseline_state[3] < 100) else 0
-        env.current_isac_effort = prev_isac_effort  # بازگرداندن 0.7
+        baseline_detected = 1 if (baseline_state[4] > 0.5 and 0 < baseline_state[3] < 64) else 0
+        env.current_isac_effort = prev_isac_effort
 
-    state, _ = env.reset()
-    action_idx = agent.act(state)
-    next_state, _, _, _, _ = env.step(action_idx)
-    drl_sinr = next_state[0]
-    drl_detected = 1 if (next_state[4] > 0.5 and 0 < next_state[3] < 100) else 0
+        state, _ = env.reset()
+        drl_sines = []
+        for _ in range(6):  
+            action_idx = agent.act(state)
+            next_state, _, _, _, _ = env.step(action_idx)
+            drl_sines.append(next_state[0])
+            state = next_state
+        drl_sinr = np.mean(drl_sines)
+        drl_detected = 1 if (next_state[4] > 0.5 and 0 < next_state[3] < 64) else 0
 
-    evaluation_data.append({
-        'Test': len(evaluation_data) + 1,
-        'Baseline_SINR': baseline_sinr,
-        'DRL_SINR': drl_sinr,
-        'Baseline_Detected': baseline_detected,
-        'DRL_Detected': drl_detected
-    })
+        evaluation_data.append({
+            'Test': len(evaluation_data) + 1,
+            'Baseline_SINR': baseline_sinr,
+            'DRL_SINR': drl_sinr,
+            'Baseline_Detected': baseline_detected,
+            'DRL_Detected': drl_detected
+        })
 
     df_eval = pd.DataFrame(evaluation_data)
     df_eval.to_csv('evaluation_results.csv', index=False)

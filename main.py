@@ -63,7 +63,6 @@ class MmWaveISACEnv(gym.Env):
         self.num_bs_physical_rows = 8
         self.num_bs_physical_cols = 8
 
-        # Initialize Antenna Arrays
         try:
             self.bs_array = PanelArray(
                 num_rows_per_panel=self.num_bs_physical_rows,
@@ -91,7 +90,6 @@ class MmWaveISACEnv(gym.Env):
             print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray objects: {e}")
             sys.exit(1)
 
-        # Define parameters
         self.num_user = 1
         self.num_bs = 1
         self.num_attacker = 1
@@ -105,9 +103,8 @@ class MmWaveISACEnv(gym.Env):
 
         self.bs_position = tf.constant([[0.0, 0.0, 10.0]], dtype=tf.float32)
         self.user_position_init = np.array([[50.0, 10.0, 1.5]], dtype=np.float32)
-        self.attacker_position_init = np.array([[60.0, -15.0, 1.5]], dtype=np.float32)
+        self.attacker_position_init = np.array([[40.0, -15.0, 1.5]], dtype=np.float32)  # Closer attacker
 
-        # Initialize UMa channel model
         try:
             self.channel_model_core = UMa(
                 carrier_frequency=self.carrier_frequency,
@@ -124,7 +121,6 @@ class MmWaveISACEnv(gym.Env):
             print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model object: {e}")
             sys.exit(1)
 
-        # Set initial topology
         try:
             initial_ut_loc = tf.reshape(self.user_position_init, [1, self.num_user, 3])
             initial_bs_loc = tf.reshape(self.bs_position, [1, self.num_bs, 3])
@@ -147,9 +143,9 @@ class MmWaveISACEnv(gym.Env):
             print(f"CRITICAL ERROR: Failed to set topology for Sionna UMa channel model: {e}")
             sys.exit(1)
 
-        # Define State and Action Spaces
-        low_obs = np.array([-30.0, -np.pi, -np.pi, 0.0, 0.0], dtype=np.float32)
-        high_obs = np.array([30.0, np.pi, np.pi, self.sensing_range_max, 1.0], dtype=np.float32)
+        # Expanded state space
+        low_obs = np.array([-30.0, -np.pi, -np.pi, 0.0, 0.0, 0.0, -np.pi], dtype=np.float32)
+        high_obs = np.array([30.0, np.pi, np.pi, self.sensing_range_max, 1.0, self.sensing_range_max, np.pi], dtype=np.float32)
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
         self.num_discrete_actions = 5
@@ -183,8 +179,7 @@ class MmWaveISACEnv(gym.Env):
                 logging.warning(f"Field computation failed: {e}. Using default gain.")
                 f_theta = tf.constant(1.0, dtype=tf.complex64)
 
-            num_elements = self.num_bs_antennas
-            num_rows = tf.cast(self.num_bs_physical_rows, dtype=tf.float32)
+            num_elements = tf.cast(self.num_bs_physical_rows, dtype=tf.float32)
             num_cols = tf.cast(self.num_bs_physical_cols, dtype=tf.float32)
 
             row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - (num_rows - 1.0) / 2.0
@@ -239,7 +234,7 @@ class MmWaveISACEnv(gym.Env):
             ut_velocity = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
             in_state = tf.zeros([current_batch_size, self.num_user], dtype=tf.bool)
 
-            num_time_samples_val = 10  # Increased for better channel averaging
+            num_time_samples_val = 10
             sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32)
 
             self.channel_model_core.set_topology(
@@ -310,8 +305,8 @@ class MmWaveISACEnv(gym.Env):
 
             if true_attacker_range <= self.sensing_range_max and true_attacker_range > 0:
                 prob_detection = self.current_isac_effort * np.exp(-0.01 * true_attacker_range)
-                prob_detection = np.minimum(1.0, prob_detection * 1.5)
-                logging.debug(f"prob_detection: {prob_detection}, true_attacker_range: {true_attacker_range}")
+                prob_detection = np.minimum(1.0, prob_detection * 1.75)
+                logging.debug(f"prob_detection: {prob_detection}, true_attacker_range: {true_attacker_range}, isac_effort: {self.current_isac_effort}")
                 if self.np_random.random() < prob_detection:
                     confidence = prob_detection + self.np_random.normal(0, 0.05)
                     confidence = np.clip(confidence, 0.0, 1.0)
@@ -319,19 +314,22 @@ class MmWaveISACEnv(gym.Env):
                     noise_range = self.np_random.normal(0, 2.0 * sensing_noise_std_factor)
                     detected_az = true_attacker_azimuth + noise_az
                     detected_range = max(0.1, true_attacker_range + noise_range)
+                    logging.debug(f"Attacker detected: confidence={confidence}, detected_range={detected_range}, detected_az={detected_az}")
 
             state_array = np.array([
                 sinr_user_clipped,
                 self.current_beam_angles_tf[0].numpy(),
                 np.clip(detected_az, -np.pi, np.pi),
                 np.clip(detected_range, 0, self.sensing_range_max),
-                confidence
+                confidence,
+                np.clip(true_attacker_range, 0, self.sensing_range_max),
+                np.clip(true_attacker_azimuth, -np.pi, np.pi)
             ], dtype=np.float32)
             logging.debug(f"Returning state_array: {state_array}")
             return state_array
         except Exception as e:
             logging.error(f"Exception in _get_state: {e}")
-            return np.array([-30.0, 0.0, -np.pi, 0.0, 0.0], dtype=np.float32)
+            return np.array([-30.0, 0.0, -np.pi, 0.0, 0.0, 0.0, -np.pi], dtype=np.float32)
 
     def reset(self, seed=None, options=None):
         logging.debug("Entering MmWaveISACEnv.reset")
@@ -352,7 +350,7 @@ class MmWaveISACEnv(gym.Env):
         obs = self._get_state()
         if obs is None:
             logging.error("reset: _get_state returned None. Returning default state.")
-            obs = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0], dtype=np.float32)
+            obs = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0, 0.0, -np.pi], dtype=np.float32)
         info = {}
         logging.debug(f"reset returning obs shape: {obs.shape}")
         return obs, info
@@ -379,7 +377,7 @@ class MmWaveISACEnv(gym.Env):
         next_state = self._get_state()
         if next_state is None:
             logging.error("step: _get_state returned None. Using default state.")
-            next_state = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0], dtype=np.float32)
+            next_state = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0, 0.0, -np.pi], dtype=np.float32)
 
         reward = self._compute_reward(next_state)
 
@@ -392,7 +390,7 @@ class MmWaveISACEnv(gym.Env):
 
         if self._is_beam_stolen(next_state):
             terminated = True
-            reward -= 50
+            reward -= 20
 
         if next_state[0] < -5.0:
             if not terminated: reward -= 10
@@ -422,17 +420,14 @@ class MmWaveISACEnv(gym.Env):
         detected_attacker_range_m = current_obs_state[3]
         detection_confidence = current_obs_state[4]
 
-        reward = tf.clip_by_value(sinr_user / 5.0, -3.0, 3.0).numpy()
+        reward = tf.clip_by_value(sinr_user / 4.0, -3.0, 3.0).numpy()
         if sinr_user > 15.0:
             reward += 2.0
-        if detection_confidence > 0.5:
+        if detection_confidence > 0.5 and self.current_step % 5 == 0:  # Cap frequency
             reward += 1.0
 
         if detection_confidence > 0.3 and detected_attacker_range_m > 0:
-            bs_pos_np = self.bs_position.numpy()[0]
-            attacker_pos_np = self.attacker_position.numpy()[0]
-            true_attacker_vector = attacker_pos_np - bs_pos_np
-            true_attacker_az_rad = np.arctan2(true_attacker_vector[1], true_attacker_vector[0])
+            true_attacker_az_rad = current_obs_state[6]
             doa_error_az = abs(detected_attacker_az_rad - true_attacker_az_rad)
             doa_error_az = min(doa_error_az, 2*np.pi - doa_error_az)
             reward += (1.0 - doa_error_az / np.pi) * 1.5 * detection_confidence
@@ -440,9 +435,7 @@ class MmWaveISACEnv(gym.Env):
             angle_diff_beam_to_detected_attacker_az = min(angle_diff_beam_to_detected_attacker_az, 2*np.pi - angle_diff_beam_to_detected_attacker_az)
             reward -= (1.0 - angle_diff_beam_to_detected_attacker_az / np.pi) * 2.0 * detection_confidence
         else:
-            bs_pos_np = self.bs_position.numpy()[0]
-            attacker_pos_np = self.attacker_position.numpy()[0]
-            true_attacker_range_val = np.linalg.norm(attacker_pos_np - bs_pos_np)
+            true_attacker_range_val = current_obs_state[5]
             if true_attacker_range_val < self.sensing_range_max * 0.5:
                 reward -= 0.3
 
@@ -465,8 +458,8 @@ class MmWaveISACEnv(gym.Env):
     def close(self):
         pass
 
-# DRL Agent (DQN)
-class DQNAgent:
+# DRL Agent (Double DQN)
+class DoubleDQNAgent:
     def __init__(self, state_dim, action_n, learning_rate=0.0005, gamma=0.99,
                  epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=15000):
         self.state_dim = state_dim
@@ -478,7 +471,7 @@ class DQNAgent:
         self.epsilon_decay_value = (epsilon_start - epsilon_end) / epsilon_decay_steps
         self.current_learning_steps = 0
         self.learning_rate = learning_rate
-        self.batch_size = 64
+        self.batch_size = 32
 
         self.model = self._build_model()
         self.target_model = self._build_model()
@@ -489,6 +482,7 @@ class DQNAgent:
             keras.layers.Input(shape=(self.state_dim,)),
             keras.layers.Dense(256, activation='relu'),
             keras.layers.Dense(128, activation='relu'),
+            keras.layers.Dense(64, activation='relu'),
             keras.layers.Dense(self.action_n, activation='linear')
         ])
         model.compile(loss='huber_loss',
@@ -523,8 +517,10 @@ class DQNAgent:
         next_states = np.array([transition[3] for transition in minibatch])
         dones = np.array([transition[4] for transition in minibatch])
 
-        q_values_next_state_target_model = self.target_model.predict(next_states, verbose=0)
-        targets_for_taken_actions = rewards + self.gamma * np.amax(q_values_next_state_target_model, axis=1) * (1 - dones)
+        # Double DQN: Select actions using online model, evaluate using target model
+        next_actions = np.argmax(self.model.predict(next_states, verbose=0), axis=1)
+        q_values_next_state_target = self.target_model.predict(next_states, verbose=0)
+        targets_for_taken_actions = rewards + self.gamma * q_values_next_state_target[np.arange(self.batch_size), next_actions] * (1 - dones)
         current_q_values_all_actions = self.model.predict(states, verbose=0)
 
         for i in range(self.batch_size):
@@ -551,9 +547,9 @@ def run_simulation():
     env = MmWaveISACEnv()
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
-    agent = DQNAgent(state_dim, action_n, epsilon_decay_steps=15000)
+    agent = DoubleDQNAgent(state_dim, action_n, epsilon_decay_steps=15000)
 
-    episodes = 300
+    episodes = 400
     target_update_freq_steps = 1000
     print_freq_episodes = 10
     save_freq_episodes = 50
@@ -604,14 +600,12 @@ def run_simulation():
         if (e + 1) % save_freq_episodes == 0:
             agent.save(f"drl_beam_simplified_ep{e+1}.weights.h5")
 
-    # Save episode results
     df = pd.DataFrame(episode_data)
     df.to_csv('episode_results.csv', index=False)
     print("Episode results saved to 'episode_results.csv'")
 
-    # Evaluation
     evaluation_data = []
-    for _ in range(20):  # Increased for more robust evaluation
+    for _ in range(20):
         state, _ = env.reset()
         env.current_isac_effort = 0.0
         env.current_beam_angles_tf.assign([0.0])
@@ -633,7 +627,6 @@ def run_simulation():
             'DRL_Detected': drl_detected
         })
 
-    # Save evaluation results
     df_eval = pd.DataFrame(evaluation_data)
     df_eval.to_csv('evaluation_results.csv', index=False)
     print("Evaluation results saved to 'evaluation_results.csv'")
@@ -642,7 +635,6 @@ def run_simulation():
     print(f"Baseline Detection Rate: {np.mean([d['Baseline_Detected'] for d in evaluation_data]) * 100:.2f}%")
     print(f"DRL Detection Rate: {np.mean([d['DRL_Detected'] for d in evaluation_data]) * 100:.2f}%")
 
-    # Plotting
     try:
         import matplotlib.pyplot as plt
         plt.figure(figsize=(15, 5))

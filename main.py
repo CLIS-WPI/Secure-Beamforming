@@ -549,7 +549,7 @@ def run_simulation():
     action_n = env.action_space.n
     agent = DoubleDQNAgent(state_dim, action_n, epsilon_decay_steps=15000)
 
-    episodes = 400
+    episodes = 500
     target_update_freq_steps = 1000
     print_freq_episodes = 10
     save_freq_episodes = 50

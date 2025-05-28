@@ -10,7 +10,7 @@ import pandas as pd
 import logging
 import os
 
-# Disable oneDNN optimizations to reduce numerical differences
+# Force disable oneDNN optimizations
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 # Set up logging to file
@@ -239,7 +239,7 @@ class MmWaveISACEnv(gym.Env):
             ut_velocity = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
             in_state = tf.zeros([current_batch_size, self.num_user], dtype=tf.bool)
 
-            num_time_samples_val = 1
+            num_time_samples_val = 10  # Increased for better channel averaging
             sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32)
 
             self.channel_model_core.set_topology(
@@ -251,7 +251,7 @@ class MmWaveISACEnv(gym.Env):
                 in_state=in_state
             )
             h_user_time_all_paths, _ = self.channel_model_core(num_time_samples_val, sampling_frequency_val)
-            h_user = h_user_time_all_paths[0, 0, 0, 0, :, 0, 0]
+            h_user = tf.reduce_mean(h_user_time_all_paths[:, 0, 0, 0, :, 0, 0], axis=0)
             tf.ensure_shape(h_user, [self.num_bs_antennas])
             logging.debug(f"h_user norm: {tf.norm(h_user).numpy()}")
 
@@ -264,7 +264,7 @@ class MmWaveISACEnv(gym.Env):
                 in_state=in_state
             )
             h_attacker_time_all_paths, _ = self.channel_model_core(num_time_samples_val, sampling_frequency_val)
-            h_attacker = h_attacker_time_all_paths[0, 0, 0, 0, :, 0, 0]
+            h_attacker = tf.reduce_mean(h_attacker_time_all_paths[:, 0, 0, 0, :, 0, 0], axis=0)
             tf.ensure_shape(h_attacker, [self.num_bs_antennas])
             logging.debug(f"h_attacker norm: {tf.norm(h_attacker).numpy()}")
 
@@ -309,7 +309,9 @@ class MmWaveISACEnv(gym.Env):
             detected_az, detected_range, confidence = -np.pi, -1.0, 0.0
 
             if true_attacker_range <= self.sensing_range_max and true_attacker_range > 0:
-                prob_detection = self.current_isac_effort * np.exp(-0.02 * true_attacker_range)
+                prob_detection = self.current_isac_effort * np.exp(-0.01 * true_attacker_range)
+                prob_detection = np.minimum(1.0, prob_detection * 1.5)
+                logging.debug(f"prob_detection: {prob_detection}, true_attacker_range: {true_attacker_range}")
                 if self.np_random.random() < prob_detection:
                     confidence = prob_detection + self.np_random.normal(0, 0.05)
                     confidence = np.clip(confidence, 0.0, 1.0)
@@ -362,10 +364,10 @@ class MmWaveISACEnv(gym.Env):
         if action_idx == 0: current_az_val -= self.beam_angle_delta_rad
         elif action_idx == 1: current_az_val += self.beam_angle_delta_rad
         elif action_idx == 2: pass
-        elif action_idx == 3: self.current_isac_effort = min(1.0, self.current_isac_effort + 0.4)
-        elif action_idx == 4: self.current_isac_effort = max(0.1, self.current_isac_effort - 0.4)
+        elif action_idx == 3: self.current_isac_effort = min(1.0, self.current_isac_effort + 0.2)
+        elif action_idx == 4: self.current_isac_effort = max(0.3, self.current_isac_effort - 0.2)
 
-        self.current_isac_effort = np.clip(self.current_isac_effort, 0.1, 1.0)
+        self.current_isac_effort = np.clip(self.current_isac_effort, 0.3, 1.0)
         current_az_val = np.clip(current_az_val, -np.pi, np.pi)
         self.current_beam_angles_tf.assign([current_az_val])
 
@@ -405,7 +407,7 @@ class MmWaveISACEnv(gym.Env):
         detected_attacker_range_m = current_obs_state[3]
         detection_confidence = current_obs_state[4]
 
-        if detection_confidence > 0.6 and 0 < detected_attacker_range_m < 75:
+        if detection_confidence > 0.5 and 0 < detected_attacker_range_m < 100:
             angle_diff_az = abs(beam_az_rad - detected_attacker_az_rad)
             angle_diff_az = min(angle_diff_az, 2*np.pi - angle_diff_az)
             if angle_diff_az < np.deg2rad(20) and sinr_user < -5.0:
@@ -423,6 +425,8 @@ class MmWaveISACEnv(gym.Env):
         reward = tf.clip_by_value(sinr_user / 5.0, -3.0, 3.0).numpy()
         if sinr_user > 15.0:
             reward += 2.0
+        if detection_confidence > 0.5:
+            reward += 1.0
 
         if detection_confidence > 0.3 and detected_attacker_range_m > 0:
             bs_pos_np = self.bs_position.numpy()[0]
@@ -464,7 +468,7 @@ class MmWaveISACEnv(gym.Env):
 # DRL Agent (DQN)
 class DQNAgent:
     def __init__(self, state_dim, action_n, learning_rate=0.0005, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=10000):
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=15000):
         self.state_dim = state_dim
         self.action_n = action_n
         self.memory = deque(maxlen=20000)
@@ -547,9 +551,9 @@ def run_simulation():
     env = MmWaveISACEnv()
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
-    agent = DQNAgent(state_dim, action_n, epsilon_decay_steps=10000)
+    agent = DQNAgent(state_dim, action_n, epsilon_decay_steps=15000)
 
-    episodes = 200
+    episodes = 300
     target_update_freq_steps = 1000
     print_freq_episodes = 10
     save_freq_episodes = 50
@@ -568,7 +572,7 @@ def run_simulation():
             episode_sinr.append(next_state[0])
             detection_confidence = next_state[4]
             detected_range = next_state[3]
-            attack_detected = 1 if (detection_confidence > 0.6 and 0 < detected_range < 75) else 0
+            attack_detected = 1 if (detection_confidence > 0.5 and 0 < detected_range < 100) else 0
             attack_detections.append(attack_detected)
             agent.remember(current_state, action_idx, reward, next_state, terminated)
             current_state = next_state
@@ -607,19 +611,19 @@ def run_simulation():
 
     # Evaluation
     evaluation_data = []
-    for _ in range(10):
+    for _ in range(20):  # Increased for more robust evaluation
         state, _ = env.reset()
         env.current_isac_effort = 0.0
         env.current_beam_angles_tf.assign([0.0])
         baseline_state = env._get_state()
         baseline_sinr = baseline_state[0]
-        baseline_detected = 1 if (baseline_state[4] > 0.6 and 0 < baseline_state[3] < 75) else 0
+        baseline_detected = 1 if (baseline_state[4] > 0.5 and 0 < baseline_state[3] < 100) else 0
 
         state, _ = env.reset()
         action_idx = agent.act(state)
         next_state, _, _, _, _ = env.step(action_idx)
         drl_sinr = next_state[0]
-        drl_detected = 1 if (next_state[4] > 0.6 and 0 < next_state[3] < 75) else 0
+        drl_detected = 1 if (next_state[4] > 0.5 and 0 < next_state[3] < 100) else 0
 
         evaluation_data.append({
             'Test': len(evaluation_data) + 1,

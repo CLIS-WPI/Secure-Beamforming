@@ -604,28 +604,30 @@ def run_simulation():
     df.to_csv('episode_results.csv', index=False)
     print("Episode results saved to 'episode_results.csv'")
 
+    # 
     evaluation_data = []
     for _ in range(20):
         state, _ = env.reset()
-        env.current_isac_effort = 0.0
+        prev_isac_effort = env.current_isac_effort  #
         env.current_beam_angles_tf.assign([0.0])
         baseline_state = env._get_state()
         baseline_sinr = baseline_state[0]
         baseline_detected = 1 if (baseline_state[4] > 0.5 and 0 < baseline_state[3] < 100) else 0
+        env.current_isac_effort = prev_isac_effort  # بازگرداندن 0.7
 
-        state, _ = env.reset()
-        action_idx = agent.act(state)
-        next_state, _, _, _, _ = env.step(action_idx)
-        drl_sinr = next_state[0]
-        drl_detected = 1 if (next_state[4] > 0.5 and 0 < next_state[3] < 100) else 0
+    state, _ = env.reset()
+    action_idx = agent.act(state)
+    next_state, _, _, _, _ = env.step(action_idx)
+    drl_sinr = next_state[0]
+    drl_detected = 1 if (next_state[4] > 0.5 and 0 < next_state[3] < 100) else 0
 
-        evaluation_data.append({
-            'Test': len(evaluation_data) + 1,
-            'Baseline_SINR': baseline_sinr,
-            'DRL_SINR': drl_sinr,
-            'Baseline_Detected': baseline_detected,
-            'DRL_Detected': drl_detected
-        })
+    evaluation_data.append({
+        'Test': len(evaluation_data) + 1,
+        'Baseline_SINR': baseline_sinr,
+        'DRL_SINR': drl_sinr,
+        'Baseline_Detected': baseline_detected,
+        'DRL_Detected': drl_detected
+    })
 
     df_eval = pd.DataFrame(evaluation_data)
     df_eval.to_csv('evaluation_results.csv', index=False)

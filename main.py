@@ -2,39 +2,47 @@ import numpy as np
 import tensorflow as tf
 import gym
 from gym import spaces
-import tensorflow.keras as keras # Using tf.keras
+import tensorflow.keras as keras
 from collections import deque
 import random
-import sys # For sys.exit
+import sys
+import pandas as pd
 import logging
+import os
+
+# Disable oneDNN optimizations to reduce numerical differences
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+
+# Set up logging to file
 logging.basicConfig(filename='simulation.log', level=logging.DEBUG, 
                     format='%(asctime)s - %(levelname)s - %(message)s')
-# --- Helper function to check TensorFlow version ---
+
+# Check TensorFlow and Sionna versions
 def check_tf_sionna_versions():
-    """Checks if the TensorFlow version is compatible with Sionna."""
-    print(f"Using TensorFlow version: {tf.__version__}")
+    logging.info(f"Using TensorFlow version: {tf.__version__}")
     tf_major_minor = float('.'.join(tf.__version__.split('.')[:2]))
-    if not (tf_major_minor >= 2.14): # Sionna generally requires TF 2.14+
-        print(f"Warning: TensorFlow version {tf.__version__} might be older than typically expected for latest Sionna features.")
+    if not (tf_major_minor >= 2.14):
+        logging.warning(f"TensorFlow version {tf.__version__} might be older than expected for latest Sionna features.")
     try:
         import sionna
-        print(f"Using Sionna version: {sionna.__version__}")
+        logging.info(f"Using Sionna version: {sionna.__version__}")
     except ImportError:
         pass
 
 check_tf_sionna_versions()
 
-# --- Sionna Imports with Error Handling ---
+# Sionna Imports with Error Handling
 try:
-    # Corrected import path for UMa and PanelArray
     from sionna.phy.channel.tr38901 import UMa
     from sionna.phy.channel.tr38901.antenna import PanelArray
     from sionna.phy.utils import log10
 except ImportError as e:
+    logging.error(f"Failed to import Sionna components: {e}")
     print(f"CRITICAL ERROR: Failed to import Sionna components: {e}")
-    print("Please ensure Sionna is installed correctly and accessible in your Python environment.")
+    print("Please ensure Sionna is installed correctly.")
     sys.exit(1)
 except Exception as e:
+    logging.error(f"Unexpected error during Sionna imports: {e}")
     print(f"An unexpected error occurred during Sionna imports: {e}")
     sys.exit(1)
 
@@ -43,7 +51,7 @@ np.random.seed(42)
 tf.random.set_seed(42)
 random.seed(42)
 
-# --- Define the mmWave ISAC Environment as a Gym environment ---
+# mmWave ISAC Environment
 class MmWaveISACEnv(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 30}
 
@@ -51,54 +59,23 @@ class MmWaveISACEnv(gym.Env):
         super(MmWaveISACEnv, self).__init__()
 
         self.carrier_frequency = 28e9
-        self.bandwidth = 100e6 
-        self.num_bs_antennas_sqrt_rows = 8 # Physical rows
-        self.num_bs_antennas_sqrt_cols = 8 # Physical columns
-        # If dual polarized, total antenna elements/ports might be rows*cols*2
-        # Let's assume PanelArray structure implies num_bs_antennas is total feeds
-        # For an 8x8 dual-pol panel, this would typically be 8*8*2 = 128.
-        # If self.num_bs_antennas is meant to be 64, it implies a single pol view
-        # or a specific way PanelArray counts elements.
-        # SIONA SAYED's fix for sv uses tf.ensure_shape(sv, [self.num_bs_antennas]).
-        # We'll proceed assuming self.num_bs_antennas (currently 64) is the target size for sv.
-        # This means ant_pol1.field and ant_pol2.field (squeezed) should be shape [32] each if concatenated.
-        # This implies the PanelArray's ant_pol1 and ant_pol2 each represent 32 elements.
-        # This is consistent if num_bs_antennas_sqrt_rows * num_bs_antennas_sqrt_cols refers to locations,
-        # and each location is dual-pol, giving total_elements = locations * 2.
-        # No, PanelArray num_rows_per_panel * num_cols_per_panel is total elements for *that panel object*.
-        # So, self.bs_array.ant_pol1 (which is an Antenna object) will have num_bs_antennas_sqrt_rows * num_bs_antennas_sqrt_cols elements.
-        # And ant_pol2 will have the same.
-        # Concatenating them will give 2 * (rows*cols) elements.
-        # So, self.num_bs_antennas should be redefined if we use SIONA SAYED's concat fix.
-
-        # Re-evaluating based on PanelArray structure:
-        # If num_rows_per_panel=8, num_cols_per_panel=8, then self.bs_array.ant_pol1 has 64 elements.
-        # And self.bs_array.ant_pol2 has 64 elements.
-        # Concatenating them makes a vector of 128 elements.
-        # So, self.num_bs_antennas should be 128 if we use that concatenation.
-        # Let's adjust this for consistency with the steering vector fix.
-
+        self.bandwidth = 100e6
         self.num_bs_physical_rows = 8
         self.num_bs_physical_cols = 8
-        
-        # 1. Initialize Antenna Arrays
+
+        # Initialize Antenna Arrays
         try:
-            self.bs_array = PanelArray( 
-                num_rows_per_panel=self.num_bs_physical_rows, # Use the renamed variable
-                num_cols_per_panel=self.num_bs_physical_cols, # Use the renamed variable
-                polarization="dual",
-                polarization_type="cross",
+            self.bs_array = PanelArray(
+                num_rows_per_panel=self.num_bs_physical_rows,
+                num_cols_per_panel=self.num_bs_physical_cols,
+                polarization="single",
+                polarization_type="V",
                 antenna_pattern="38.901",
                 carrier_frequency=self.carrier_frequency
             )
-            print("Sionna PanelArray for BS initialized successfully.") 
-            
-            # This defines the total number of antenna elements/ports the BS uses for beamforming
-            # If dual polarized, each physical location has 2 feeds.
-            # Assuming self.bs_array.num_ant gives the total number of ports for the dual-pol array
-            self.num_bs_antennas = self.bs_array.num_ant 
-            print(f"Total BS antenna ports defined: {self.num_bs_antennas}")
-
+            logging.info("Sionna PanelArray for BS initialized successfully.")
+            self.num_bs_antennas = self.bs_array.num_ant
+            logging.info(f"Total BS antenna ports defined: {self.num_bs_antennas}")
 
             self.ut_array = PanelArray(
                 num_rows_per_panel=1,
@@ -108,45 +85,46 @@ class MmWaveISACEnv(gym.Env):
                 antenna_pattern='omni',
                 carrier_frequency=self.carrier_frequency
             )
-            print("Sionna PanelArray for UT (omni) initialized successfully.")
-        except Exception as e: 
+            logging.info("Sionna PanelArray for UT (omni) initialized successfully.")
+        except Exception as e:
+            logging.error(f"Failed to initialize Sionna PanelArray objects: {e}")
             print(f"CRITICAL ERROR: Failed to initialize Sionna PanelArray objects: {e}")
             sys.exit(1)
 
-        # 2. Define other necessary parameters, including initial positions
-        self.num_user = 1 
-        self.num_bs = 1   
-        self.num_attacker = 1 # <<<< ADD THIS LINE HERE
-        
-        self.tx_power_dbm = 20.0
+        # Define parameters
+        self.num_user = 1
+        self.num_bs = 1
+        self.num_attacker = 1
+        self.tx_power_dbm = 30.0
         self.tx_power_watts = 10**((self.tx_power_dbm - 30) / 10)
         self.noise_power_db_per_hz = -174.0
-        no_db = self.noise_power_db_per_hz + 10 * np.log10(self.bandwidth) 
+        no_db = self.noise_power_db_per_hz + 10 * np.log10(self.bandwidth)
         self.no_lin = 10**((no_db - 30) / 10)
         self.sensing_range_max = 150.0
-        self.max_steps_per_episode = 100
-        
+        self.max_steps_per_episode = 50
+
         self.bs_position = tf.constant([[0.0, 0.0, 10.0]], dtype=tf.float32)
         self.user_position_init = np.array([[50.0, 10.0, 1.5]], dtype=np.float32)
         self.attacker_position_init = np.array([[60.0, -15.0, 1.5]], dtype=np.float32)
 
-        # 3. Initialize UMa channel model
+        # Initialize UMa channel model
         try:
             self.channel_model_core = UMa(
                 carrier_frequency=self.carrier_frequency,
                 o2i_model="low",
                 ut_array=self.ut_array,
-                bs_array=self.bs_array, # Pass the BS PanelArray instance
-                direction="downlink",     
-                enable_pathloss=True,     
+                bs_array=self.bs_array,
+                direction="downlink",
+                enable_pathloss=True,
                 enable_shadow_fading=True
             )
-            print("Sionna UMa channel model object created successfully.")
+            logging.info("Sionna UMa channel model object created successfully.")
         except Exception as e:
+            logging.error(f"Failed to initialize Sionna UMa channel model object: {e}")
             print(f"CRITICAL ERROR: Failed to initialize Sionna UMa channel model object: {e}")
             sys.exit(1)
 
-        # 4. Set initial topology
+        # Set initial topology
         try:
             initial_ut_loc = tf.reshape(self.user_position_init, [1, self.num_user, 3])
             initial_bs_loc = tf.reshape(self.bs_position, [1, self.num_bs, 3])
@@ -163,232 +141,160 @@ class MmWaveISACEnv(gym.Env):
                 ut_velocities=initial_ut_velocities,
                 in_state=initial_in_state
             )
-            print("Sionna UMa channel model topology set successfully.")
+            logging.info("Sionna UMa channel model topology set successfully.")
         except Exception as e:
+            logging.error(f"Failed to set topology for Sionna UMa channel model: {e}")
             print(f"CRITICAL ERROR: Failed to set topology for Sionna UMa channel model: {e}")
             sys.exit(1)
-        
-        # 5. Define State and Action Spaces and other instance variables
-        # ... (rest of __init__ is the same)
-        low_obs = np.array([-30.0, -np.pi, -np.pi/2, -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0], dtype=np.float32)
-        high_obs = np.array([30.0, np.pi, np.pi/2, np.pi, np.pi/2, self.sensing_range_max, 1.0], dtype=np.float32)
+
+        # Define State and Action Spaces
+        low_obs = np.array([-30.0, -np.pi, -np.pi, 0.0, 0.0], dtype=np.float32)
+        high_obs = np.array([30.0, np.pi, np.pi, self.sensing_range_max, 1.0], dtype=np.float32)
         self.observation_space = spaces.Box(low=low_obs, high=high_obs, dtype=np.float32)
 
-        self.num_discrete_actions = 7
+        self.num_discrete_actions = 5
         self.action_space = spaces.Discrete(self.num_discrete_actions)
         self.beam_angle_delta_rad = np.deg2rad(5)
 
         self.user_position = tf.Variable(self.user_position_init, dtype=tf.float32)
         self.attacker_position = tf.Variable(self.attacker_position_init, dtype=tf.float32)
-
-        self.current_beam_angles_tf = tf.Variable([0.0, 0.0], dtype=tf.float32)
-        self.current_isac_effort = 0.5
+        self.current_beam_angles_tf = tf.Variable([0.0], dtype=tf.float32)
+        self.current_isac_effort = 0.7
         self.current_step = 0
 
-
-    # Inside class MmWaveISACEnv:
-
     def _get_steering_vector(self, angles_rad_tf):
-        """
-        Computes the steering vector for the antenna array.
-        angles_rad_tf: TensorFlow tensor [azimuth_rad, elevation_rad]
-        Returns: Steering vector of shape [self.num_bs_antennas] (complex64)
-        """
         logging.debug("Entering _get_steering_vector")
-        azimuth_rad = tf.expand_dims(angles_rad_tf[0], axis=0)
-        zenith_rad = tf.expand_dims(np.pi/2 - angles_rad_tf[1], axis=0)
+        try:
+            azimuth_rad = tf.reshape(angles_rad_tf[0], [])
+            zenith_rad = tf.constant(np.pi/2, dtype=tf.float32)
 
-        # Get field patterns for first polarization (ant_pol1)
-        # Assuming self.bs_array.ant_pol1.field returns a tuple (f_theta, f_phi)
-        # where each is a tensor representing the field component.
-        # This part was based on your debug prints "field_output_1 type: <class 'tuple'>, length: 2"
-        field_output_1 = self.bs_array.ant_pol1.field(theta=zenith_rad, phi=azimuth_rad)
-        # print(f"  DEBUG: field_output_1 type: {type(field_output_1)}, content: {field_output_1}") # Further debug if needed
-        
-        # Check if field_output_1 is indeed a tuple of two tensors
-        if not (isinstance(field_output_1, tuple) and len(field_output_1) == 2):
-            print(f"  ERROR: Unexpected output from self.bs_array.ant_pol1.field(). Expected tuple of 2 tensors, got {type(field_output_1)}")
-            # Fallback to a zero steering vector to avoid crashing, but this needs fixing
-            return tf.zeros([self.num_bs_antennas], dtype=tf.complex64)
+            try:
+                field_output = self.bs_array.ant_pol1.field(theta=zenith_rad, phi=azimuth_rad)
+                if not (isinstance(field_output, tuple) and len(field_output) == 2):
+                    logging.warning(f"Unexpected field output: {type(field_output)}")
+                    raise ValueError("Invalid field output")
+                
+                f_theta, f_phi = field_output
+                f_theta = tf.reduce_mean(tf.squeeze(f_theta))
+                f_phi = tf.reduce_mean(tf.squeeze(f_phi))
+                logging.debug(f"f_theta: {f_theta.numpy()}, f_phi: {f_phi.numpy()}")
+                f_theta = tf.cast(f_theta, tf.complex64)
+            except Exception as e:
+                logging.warning(f"Field computation failed: {e}. Using default gain.")
+                f_theta = tf.constant(1.0, dtype=tf.complex64)
 
-        f_theta_1, f_phi_1 = field_output_1
-        # print(f"  DEBUG: f_theta_1 shape: {f_theta_1.shape}, f_phi_1 shape: {f_phi_1.shape}")
+            num_elements = self.num_bs_antennas
+            num_rows = tf.cast(self.num_bs_physical_rows, dtype=tf.float32)
+            num_cols = tf.cast(self.num_bs_physical_cols, dtype=tf.float32)
 
-        f_theta_1 = tf.squeeze(f_theta_1, axis=0) # Squeeze batch dimension for angles
-        f_phi_1 = tf.squeeze(f_phi_1, axis=0)   # Squeeze batch dimension for angles
+            row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - (num_rows - 1.0) / 2.0
+            col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - (num_cols - 1.0) / 2.0
 
-        expected_elements_per_pol = self.num_bs_antennas // 2 
+            d_v = d_h = 0.5
+            wavelength = 3e8 / self.carrier_frequency
+            k = 2 * np.pi / wavelength
 
-        num_rows = tf.cast(self.num_bs_physical_rows, dtype=tf.float32) # Cast num_rows for calculation
-        num_cols = tf.cast(self.num_bs_physical_cols, dtype=tf.float32) # Cast num_cols for calculation
-        
-        # --- START OF NEEDFUL CHANGE ---
-        row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - tf.cast((num_rows - 1.0) / 2.0, dtype=tf.float32)
-        col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - tf.cast((num_cols - 1.0) / 2.0, dtype=tf.float32)
-        # --- END OF NEEDFUL CHANGE ---
+            row_grid, col_grid = tf.meshgrid(row_indices, col_indices, indexing='ij')
+            positions_y = row_grid * d_v * wavelength
+            positions_x = col_grid * d_h * wavelength
+            positions_z = tf.zeros_like(positions_x)
+            positions = tf.stack([positions_x, positions_y, positions_z], axis=-1)
+            positions = tf.reshape(positions, [-1, 3])
 
-        d_v = d_h = 0.5  
-        wavelength = 3e8 / self.carrier_frequency 
-        k = 2 * np.pi / wavelength  
+            sin_theta = tf.sin(zenith_rad)
+            cos_theta = tf.cos(zenith_rad)
+            sin_phi = tf.sin(azimuth_rad)
+            cos_phi = tf.cos(azimuth_rad)
 
-        row_grid, col_grid = tf.meshgrid(row_indices, col_indices)
-        positions_y = row_grid * d_v * wavelength 
-        positions_x = col_grid * d_h * wavelength  
-        positions_z = tf.zeros_like(positions_x)  
-        positions = tf.stack([positions_x, positions_y, positions_z], axis=-1) 
-        positions = tf.reshape(positions, [-1, 3]) 
+            direction = tf.stack([sin_theta * cos_phi, sin_theta * sin_phi, cos_theta], axis=0)
+            direction = tf.expand_dims(direction, axis=0)
 
-        sin_theta = tf.sin(zenith_rad) # zenith_rad is already [1]
-        cos_theta = tf.cos(zenith_rad)
-        sin_phi = tf.sin(azimuth_rad)  # azimuth_rad is already [1]
-        cos_phi = tf.cos(azimuth_rad)
-        
-        # Ensure direction vector is correctly shaped for broadcasting with positions
-        # direction should be [1, 3] to multiply with positions [64, 3] for reduce_sum
-        direction = tf.stack([sin_theta[0] * cos_phi[0], 
-                              sin_theta[0] * sin_phi[0], 
-                              cos_theta[0]], axis=0) # Creates a [3] vector
-        direction = tf.expand_dims(direction, axis=0) # Makes it [1, 3]
+            phase_shifts = k * tf.reduce_sum(positions * direction, axis=-1)
+            array_response = tf.exp(tf.complex(0.0, phase_shifts))
 
-        phase_shifts = k * tf.reduce_sum(positions * direction, axis=-1) 
-        array_response = tf.exp(tf.complex(0.0, phase_shifts))  
+            sv = array_response * f_theta
+            if sv.shape[0] != num_elements:
+                logging.error(f"sv has {sv.shape[0]} elements, expected {num_elements}")
+                sv = tf.ones([num_elements], dtype=tf.complex64)
 
-        # Assuming f_theta_1 is the scalar (or element-wise) gain for this polarization
-        # and it's for vertical polarization. The shape of f_theta_1 after squeeze needs to be compatible.
-        # If f_theta_1 from .field() is a scalar complex gain for that direction:
-        sv_pol1 = array_response * tf.cast(tf.squeeze(f_theta_1), tf.complex64) # Squeeze f_theta_1 further if it was [1]
-        # print(f"  DEBUG: sv_pol1 shape: {sv_pol1.shape}")
+            sv = tf.cast(sv, tf.complex64)
+            sv = tf.ensure_shape(sv, [self.num_bs_antennas])
+            logging.debug(f"Steering vector norm: {tf.norm(sv).numpy()}")
+            return sv
+        except Exception as e:
+            logging.error(f"Error in _get_steering_vector: {e}")
+            return tf.ones([self.num_bs_antennas], dtype=tf.complex64)
 
-        if sv_pol1.shape[0] != expected_elements_per_pol:
-            print(f"  ERROR: sv_pol1 has {sv_pol1.shape[0]} elements, expected {expected_elements_per_pol}")
-            # Fallback or error handling
-            sv_pol1 = tf.zeros([expected_elements_per_pol], dtype=tf.complex64)
-
-
-        if self.bs_array.polarization == "dual" and hasattr(self.bs_array, 'ant_pol2'):
-            field_output_2 = self.bs_array.ant_pol2.field(theta=zenith_rad, phi=azimuth_rad)
-            # print(f"  DEBUG: field_output_2 type: {type(field_output_2)}, content: {field_output_2}")
-            if not (isinstance(field_output_2, tuple) and len(field_output_2) == 2):
-                print(f"  ERROR: Unexpected output from self.bs_array.ant_pol2.field(). Expected tuple of 2 tensors, got {type(field_output_2)}")
-                sv_pol2 = tf.zeros([expected_elements_per_pol], dtype=tf.complex64)
-            else:
-                f_theta_2, f_phi_2 = field_output_2
-                # print(f"  DEBUG: f_theta_2 shape: {f_theta_2.shape}, f_phi_2 shape: {f_phi_2.shape}")
-                f_theta_2 = tf.squeeze(f_theta_2, axis=0)
-                f_phi_2 = tf.squeeze(f_phi_2, axis=0)
-                # Assuming f_phi_2 is for horizontal polarization if f_theta_1 was vertical
-                sv_pol2 = array_response * tf.cast(tf.squeeze(f_phi_2), tf.complex64)
-                # print(f"  DEBUG: sv_pol2 shape: {sv_pol2.shape}")
-
-                if sv_pol2.shape[0] != expected_elements_per_pol:
-                    print(f"  ERROR: sv_pol2 has {sv_pol2.shape[0]} elements, expected {expected_elements_per_pol}")
-                    sv_pol2 = tf.zeros([expected_elements_per_pol], dtype=tf.complex64)
-
-            if self.bs_array.polarization_type == "VH" or self.bs_array.polarization_type == "cross": # Assuming cross might mean V/H components
-                sv = tf.concat([sv_pol1, sv_pol2], axis=0)
-            else: 
-                sv = sv_pol1 # Fallback to single pol if combination is unclear
-            # print(f"  DEBUG: Total steering vector shape (dual-pol): {sv.shape}")
-        else:
-            sv = sv_pol1
-            # print(f"  DEBUG: Total steering vector shape (single-pol): {sv.shape}")
-
-        sv = tf.cast(sv, tf.complex64)
-        sv = tf.ensure_shape(sv, [self.num_bs_antennas])
-        # print(f"Final steering vector shape: {sv.shape}")
-
-        return sv
-
-    #@tf.function(reduce_retracing=True) # Keep commented out for now
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
-        current_batch_size = tf.shape(user_pos_in)[0] 
+        logging.debug("Entering _get_channel_and_powers")
+        try:
+            current_batch_size = tf.shape(user_pos_in)[0]
+            bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, self.num_bs, 3])
+            user_loc_reshaped = tf.reshape(user_pos_in, [current_batch_size, self.num_user, 3])
+            attacker_loc_reshaped = tf.reshape(attacker_pos_in, [current_batch_size, self.num_attacker, 3])
 
-        bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, self.num_bs, 3])
-        user_loc_reshaped = tf.reshape(user_pos_in, [current_batch_size, self.num_user, 3])
-        attacker_loc_reshaped = tf.reshape(attacker_pos_in, [current_batch_size, self.num_attacker, 3]) # Use self.num_attacker
+            bs_orientation = tf.zeros([current_batch_size, self.num_bs, 3], dtype=tf.float32)
+            bs_velocity = tf.zeros([current_batch_size, self.num_bs, 3], dtype=tf.float32)
+            ut_orientation = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
+            ut_velocity = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
+            in_state = tf.zeros([current_batch_size, self.num_user], dtype=tf.bool)
 
-        bs_orientation = tf.zeros([current_batch_size, self.num_bs, 3], dtype=tf.float32)
-        bs_velocity = tf.zeros([current_batch_size, self.num_bs, 3], dtype=tf.float32)
-        
-        ut_orientation_user = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
-        ut_velocity_user = tf.zeros([current_batch_size, self.num_user, 3], dtype=tf.float32)
-        in_state_user = tf.zeros([current_batch_size, self.num_user], dtype=tf.bool) 
-        
-        ut_orientation_attacker = tf.zeros([current_batch_size, self.num_attacker, 3], dtype=tf.float32)
-        ut_velocity_attacker = tf.zeros([current_batch_size, self.num_attacker, 3], dtype=tf.float32)
-        in_state_attacker = tf.zeros([current_batch_size, self.num_attacker], dtype=tf.bool)
+            num_time_samples_val = 1
+            sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32)
 
-        num_time_samples_val = 1 
-        sampling_frequency_val = tf.cast(self.bandwidth, dtype=tf.float32) 
+            self.channel_model_core.set_topology(
+                ut_loc=user_loc_reshaped,
+                bs_loc=bs_loc_reshaped,
+                ut_orientations=ut_orientation,
+                bs_orientations=bs_orientation,
+                ut_velocities=ut_velocity,
+                in_state=in_state
+            )
+            h_user_time_all_paths, _ = self.channel_model_core(num_time_samples_val, sampling_frequency_val)
+            h_user = h_user_time_all_paths[0, 0, 0, 0, :, 0, 0]
+            tf.ensure_shape(h_user, [self.num_bs_antennas])
+            logging.debug(f"h_user norm: {tf.norm(h_user).numpy()}")
 
-        # 1. Set topology for the BS-User link
-        self.channel_model_core.set_topology(
-            ut_loc=user_loc_reshaped,
-            bs_loc=bs_loc_reshaped,
-            ut_orientations=ut_orientation_user,
-            bs_orientations=bs_orientation,
-            ut_velocities=ut_velocity_user,
-            in_state=in_state_user
-        )
-        # Get channel for user
-        h_user_time_all_paths, _ = self.channel_model_core(
-            num_time_samples_val,
-            sampling_frequency_val
-        )
-        # h_user_time_all_paths shape: [batch, num_rx_links=1, num_ut_ant_elements, num_tx_links=1, num_bs_ant_elements, num_paths, num_time_samples]
-        # For UMa, num_ut_ant_elements comes from self.ut_array.num_ant
-        # For UMa, num_bs_ant_elements comes from self.bs_array.num_ant
-        # Slicing: [0,0 (link), :(ut_ant), 0 (link), :(bs_ant), 0 (path), 0 (time_sample)]
-        h_user = h_user_time_all_paths[0, 0, 0, 0, :, 0, 0] # Assuming UT is single antenna (0-th element) 
-                                                          # and we want channel vector to all BS antennas for first path, first sample.
-                                                          # Shape will be [self.num_bs_antennas]
+            self.channel_model_core.set_topology(
+                ut_loc=attacker_loc_reshaped,
+                bs_loc=bs_loc_reshaped,
+                ut_orientations=ut_orientation,
+                bs_orientations=bs_orientation,
+                ut_velocities=ut_velocity,
+                in_state=in_state
+            )
+            h_attacker_time_all_paths, _ = self.channel_model_core(num_time_samples_val, sampling_frequency_val)
+            h_attacker = h_attacker_time_all_paths[0, 0, 0, 0, :, 0, 0]
+            tf.ensure_shape(h_attacker, [self.num_bs_antennas])
+            logging.debug(f"h_attacker norm: {tf.norm(h_attacker).numpy()}")
 
-        # 2. Set topology for the BS-Attacker link
-        self.channel_model_core.set_topology(
-            ut_loc=attacker_loc_reshaped, 
-            bs_loc=bs_loc_reshaped,
-            ut_orientations=ut_orientation_attacker,
-            bs_orientations=bs_orientation,
-            ut_velocities=ut_velocity_attacker,
-            in_state=in_state_attacker
-        )
-        # Get channel for attacker
-        h_attacker_time_all_paths, _ = self.channel_model_core(
-            num_time_samples_val,
-            sampling_frequency_val
-        )
-        h_attacker = h_attacker_time_all_paths[0, 0, 0, 0, :, 0, 0] # Same slicing logic for attacker
+            steering_vec = self._get_steering_vector(current_beam_angles_tf_in)
+            steering_vec = tf.reshape(steering_vec, [-1])
+            precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)
+            precoder_w = tf.reshape(precoder_w, [-1, 1])
 
-        # --- Beamforming and Power Calculation ---
-        steering_vec = self._get_steering_vector(current_beam_angles_tf_in) # Shape [self.num_bs_antennas]
-        steering_vec = tf.reshape(steering_vec, [-1]) # Ensure it's 1D, should already be.
+            h_user_row_vec = tf.cast(h_user, tf.complex64)
+            h_attacker_row_vec = tf.cast(h_attacker, tf.complex64)
 
-        precoder_w = tf.math.conj(steering_vec) / (tf.norm(steering_vec) + 1e-9)
-        precoder_w = tf.reshape(precoder_w, [-1, 1])  # Shape [self.num_bs_antennas, 1]
-        
-        # h_user and h_attacker are now effectively row vectors of shape [self.num_bs_antennas]
-        # (after selecting the 0-th UT antenna element's perspective)
-        h_user_row_vec = tf.cast(h_user, tf.complex64)       # Shape [self.num_bs_antennas]
-        h_attacker_row_vec = tf.cast(h_attacker, tf.complex64) # Shape [self.num_bs_antennas]
+            y_user_eff_scalar = tf.reduce_sum(h_user_row_vec * tf.squeeze(precoder_w))
+            y_attacker_eff_scalar = tf.reduce_sum(h_attacker_row_vec * tf.squeeze(precoder_w))
 
-        # Effective scalar channel after beamforming: h_row_vec * w_col_vec
-        y_user_eff_scalar = tf.reduce_sum(h_user_row_vec * tf.squeeze(precoder_w)) # Squeeze precoder_w to [self.num_bs_antennas] for element-wise product
-        y_attacker_eff_scalar = tf.reduce_sum(h_attacker_row_vec * tf.squeeze(precoder_w))
-        
-        signal_power_user = tf.abs(y_user_eff_scalar)**2 * self.tx_power_watts
-        signal_power_attacker = tf.abs(y_attacker_eff_scalar)**2 * self.tx_power_watts
-    
-        return signal_power_user, signal_power_attacker
+            signal_power_user = tf.abs(y_user_eff_scalar)**2 * self.tx_power_watts
+            signal_power_attacker = tf.abs(y_attacker_eff_scalar)**2 * self.tx_power_watts
+            logging.debug(f"Signal power user: {signal_power_user.numpy()}, attacker: {signal_power_attacker.numpy()}")
+
+            return signal_power_user, signal_power_attacker
+        except Exception as e:
+            logging.error(f"Error in _get_channel_and_powers: {e}")
+            return tf.constant(0.0, dtype=tf.float32), tf.constant(0.0, dtype=tf.float32)
 
     def _get_state(self):
-        print("DEBUG: Entering _get_state()")
+        logging.debug("Entering _get_state")
         try:
-            signal_power_user_tf, signal_power_attacker_tf = self._get_channel_and_powers( # Corrected to unpack two values
+            signal_power_user_tf, signal_power_attacker_tf = self._get_channel_and_powers(
                 self.current_beam_angles_tf, self.user_position, self.attacker_position
             )
-            print("DEBUG: _get_channel_and_powers call successful")
             signal_power_user = signal_power_user_tf.numpy()
-
             sinr_user_val = 10 * log10(tf.cast(signal_power_user / self.no_lin, tf.float32)).numpy() if signal_power_user > 1e-12 else -30.0
             sinr_user_clipped = np.clip(sinr_user_val, -30.0, 30.0)
 
@@ -399,141 +305,124 @@ class MmWaveISACEnv(gym.Env):
             true_attacker_vector = attacker_pos_np - bs_pos_np
             true_attacker_range = np.linalg.norm(true_attacker_vector)
             true_attacker_azimuth = np.arctan2(true_attacker_vector[1], true_attacker_vector[0])
-            true_attacker_elevation = np.arctan2(true_attacker_vector[2], np.linalg.norm(true_attacker_vector[0:2]))
 
-            detected_az, detected_el, detected_range, confidence = -np.pi-0.1, -np.pi/2-0.1, -1.0, 0.0
-            
+            detected_az, detected_range, confidence = -np.pi, -1.0, 0.0
+
             if true_attacker_range <= self.sensing_range_max and true_attacker_range > 0:
                 prob_detection = self.current_isac_effort * np.exp(-0.02 * true_attacker_range)
-                if self.np_random.random() < prob_detection: # Make sure self.np_random is initialized by super().reset()
-                    confidence = prob_detection + self.np_random.normal(0, 0.1)
+                if self.np_random.random() < prob_detection:
+                    confidence = prob_detection + self.np_random.normal(0, 0.05)
                     confidence = np.clip(confidence, 0.0, 1.0)
-                    noise_az = self.np_random.normal(0, np.deg2rad(20) * sensing_noise_std_factor)
-                    noise_el = self.np_random.normal(0, np.deg2rad(20) * sensing_noise_std_factor)
-                    noise_range = self.np_random.normal(0, 10.0 * sensing_noise_std_factor)
+                    noise_az = self.np_random.normal(0, np.deg2rad(5) * sensing_noise_std_factor)
+                    noise_range = self.np_random.normal(0, 2.0 * sensing_noise_std_factor)
                     detected_az = true_attacker_azimuth + noise_az
-                    detected_el = true_attacker_elevation + noise_el
                     detected_range = max(0.1, true_attacker_range + noise_range)
-            
+
             state_array = np.array([
                 sinr_user_clipped,
-                self.current_beam_angles_tf[0].numpy(), self.current_beam_angles_tf[1].numpy(),
-                np.clip(detected_az, -np.pi, np.pi), 
-                np.clip(detected_el, -np.pi/2, np.pi/2),
+                self.current_beam_angles_tf[0].numpy(),
+                np.clip(detected_az, -np.pi, np.pi),
                 np.clip(detected_range, 0, self.sensing_range_max),
                 confidence
             ], dtype=np.float32)
-            print(f"DEBUG: _get_state is returning state_array of shape {state_array.shape}")
+            logging.debug(f"Returning state_array: {state_array}")
             return state_array
-        except Exception as e_get_state:
-            print(f"CRITICAL DEBUG: Exception inside _get_state(): {e_get_state}")
-            import traceback
-            traceback.print_exc()
-            # To explicitly show that an error here might cause reset to misbehave
-            # In a real scenario, you might re-raise or handle more gracefully
-            return None # Explicitly return None if _get_state fails internally
-    def reset(self, seed=None, options=None):
-        print("DEBUG: Entering MmWaveISACEnv.reset()")
-        super().reset(seed=seed) # This should initialize self.np_random
-        self.current_beam_angles_tf.assign([0.0, 0.0])
-        self.current_isac_effort = 0.5
-        
-        # Check if np_random was initialized
-        if not hasattr(self, 'np_random') or self.np_random is None:
-            print("CRITICAL DEBUG: self.np_random not initialized by super().reset(). Initializing manually.")
-            # Fallback seeding if super().reset() didn't work as expected for np_random
-            # This is a gym internal detail, but good to be defensive for debugging
-            self.np_random, _ = gym.utils.seeding.np_random(seed)
+        except Exception as e:
+            logging.error(f"Exception in _get_state: {e}")
+            return np.array([-30.0, 0.0, -np.pi, 0.0, 0.0], dtype=np.float32)
 
+    def reset(self, seed=None, options=None):
+        logging.debug("Entering MmWaveISACEnv.reset")
+        super().reset(seed=seed)
+        self.current_beam_angles_tf.assign([0.0])
+        self.current_isac_effort = 0.7
+
+        if not hasattr(self, 'np_random') or self.np_random is None:
+            logging.warning("self.np_random not initialized. Initializing manually.")
+            self.np_random, _ = gym.utils.seeding.np_random(seed)
 
         user_pos_offset = self.np_random.normal(0, 1.0, 3).reshape(1,3).astype(np.float32)
         attacker_pos_offset = self.np_random.normal(0, 2.0, 3).reshape(1,3).astype(np.float32)
         self.user_position.assign(self.user_position_init + user_pos_offset)
         self.attacker_position.assign(self.attacker_position_init + attacker_pos_offset)
         self.current_step = 0
-        
-        print("DEBUG: Calling self._get_state() from reset()")
+
         obs = self._get_state()
-        info = {} # Standard Gym practice
-
         if obs is None:
-            print("CRITICAL DEBUG: self._get_state() returned None. Reset will also effectively return None for the observation part.")
-            # This state will cause the unpack error if not handled.
-            # Forcing a valid return type for debugging:
-            # obs = self.observation_space.sample() # This would prevent the unpack error but hide the root cause.
-            # Let's allow it to fail to see the error if obs is None.
-            # The error "cannot unpack non-iterable NoneType object" implies `obs, info` could not be formed
-            # because the entire return of `reset` was `None`.
-            # However, if obs is None, then (None, {}) is returned.
-            # The error implies that reset() *itself* is returning a single None value.
-
-        print(f"DEBUG: MmWaveISACEnv.reset() is about to return obs (type: {type(obs)}) and info (type: {type(info)})")
+            logging.error("reset: _get_state returned None. Returning default state.")
+            obs = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0], dtype=np.float32)
+        info = {}
+        logging.debug(f"reset returning obs shape: {obs.shape}")
         return obs, info
-    
+
     def step(self, action_idx):
-        current_az_val, current_el_val = self.current_beam_angles_tf.numpy()
+        logging.debug(f"Entering step with action_idx: {action_idx}")
+        current_az_val = self.current_beam_angles_tf.numpy()[0]
 
         if action_idx == 0: current_az_val -= self.beam_angle_delta_rad
         elif action_idx == 1: current_az_val += self.beam_angle_delta_rad
-        elif action_idx == 2: current_el_val += self.beam_angle_delta_rad
-        elif action_idx == 3: current_el_val -= self.beam_angle_delta_rad
-        elif action_idx == 4: pass
-        elif action_idx == 5: self.current_isac_effort = min(1.0, self.current_isac_effort + 0.4)
-        elif action_idx == 6: self.current_isac_effort = max(0.1, self.current_isac_effort - 0.4)
-        
+        elif action_idx == 2: pass
+        elif action_idx == 3: self.current_isac_effort = min(1.0, self.current_isac_effort + 0.4)
+        elif action_idx == 4: self.current_isac_effort = max(0.1, self.current_isac_effort - 0.4)
+
         self.current_isac_effort = np.clip(self.current_isac_effort, 0.1, 1.0)
         current_az_val = np.clip(current_az_val, -np.pi, np.pi)
-        current_el_val = np.clip(current_el_val, -np.pi/2 * 0.95, np.pi/2 * 0.95)
-        self.current_beam_angles_tf.assign([current_az_val, current_el_val])
+        self.current_beam_angles_tf.assign([current_az_val])
 
         user_pos_offset = self.np_random.normal(0, 0.05, 3).astype(np.float32).reshape(1,3)
         attacker_pos_offset = self.np_random.normal(0, 0.2, 3).astype(np.float32).reshape(1,3)
         self.user_position.assign_add(tf.constant(user_pos_offset, dtype=tf.float32))
         self.attacker_position.assign_add(tf.constant(attacker_pos_offset, dtype=tf.float32))
 
-        next_state_obs = self._get_state()
-        reward = self._compute_reward(next_state_obs)
-        
+        next_state = self._get_state()
+        if next_state is None:
+            logging.error("step: _get_state returned None. Using default state.")
+            next_state = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0], dtype=np.float32)
+
+        reward = self._compute_reward(next_state)
+
         self.current_step += 1
         terminated = False
         truncated = False
 
         if self.current_step >= self.max_steps_per_episode:
             truncated = True
-        
-        if self._is_beam_stolen(next_state_obs):
-            terminated = True
-            reward -= 200 
 
-        if next_state_obs[0] < -20.0: # Persistently very low SINR
-            if not terminated : reward -= 50 # Add penalty only if not already terminated by beam stealing
+        if self._is_beam_stolen(next_state):
             terminated = True
-            
-        return next_state_obs, reward, terminated, truncated, {}
+            reward -= 50
+
+        if next_state[0] < -5.0:
+            if not terminated: reward -= 10
+            terminated = True
+
+        return next_state, reward, terminated, truncated, {}
 
     def _is_beam_stolen(self, current_obs_state):
         sinr_user = current_obs_state[0]
         beam_az_rad = current_obs_state[1]
-        detected_attacker_az_rad = current_obs_state[3]
-        detected_attacker_range_m = current_obs_state[5]
-        detection_confidence = current_obs_state[6]
+        detected_attacker_az_rad = current_obs_state[2]
+        detected_attacker_range_m = current_obs_state[3]
+        detection_confidence = current_obs_state[4]
 
-        if detection_confidence > 0.6 and 0 < detected_attacker_range_m < 30:
+        if detection_confidence > 0.6 and 0 < detected_attacker_range_m < 75:
             angle_diff_az = abs(beam_az_rad - detected_attacker_az_rad)
             angle_diff_az = min(angle_diff_az, 2*np.pi - angle_diff_az)
             if angle_diff_az < np.deg2rad(20) and sinr_user < -5.0:
-                print(f"--- BEAM STOLEN condition met: AngleDiff={np.rad2deg(angle_diff_az):.1f}deg, UserSINR={sinr_user:.1f}dB, AttRange={detected_attacker_range_m:.1f}m ---")
+                logging.info(f"BEAM STOLEN: AngleDiff={np.rad2deg(angle_diff_az):.1f}deg, UserSINR={sinr_user:.1f}dB, AttRange={detected_attacker_range_m:.1f}m")
                 return True
         return False
 
     def _compute_reward(self, current_obs_state):
         sinr_user = current_obs_state[0]
         beam_az_rad = current_obs_state[1]
-        detected_attacker_az_rad = current_obs_state[3]
-        detected_attacker_range_m = current_obs_state[5]
-        detection_confidence = current_obs_state[6]
+        detected_attacker_az_rad = current_obs_state[2]
+        detected_attacker_range_m = current_obs_state[3]
+        detection_confidence = current_obs_state[4]
 
         reward = tf.clip_by_value(sinr_user / 5.0, -3.0, 3.0).numpy()
+        if sinr_user > 15.0:
+            reward += 2.0
 
         if detection_confidence > 0.3 and detected_attacker_range_m > 0:
             bs_pos_np = self.bs_position.numpy()[0]
@@ -542,46 +431,39 @@ class MmWaveISACEnv(gym.Env):
             true_attacker_az_rad = np.arctan2(true_attacker_vector[1], true_attacker_vector[0])
             doa_error_az = abs(detected_attacker_az_rad - true_attacker_az_rad)
             doa_error_az = min(doa_error_az, 2*np.pi - doa_error_az)
-            reward += (1.0 - doa_error_az / np.pi) * 1.0 * detection_confidence
+            reward += (1.0 - doa_error_az / np.pi) * 1.5 * detection_confidence
             angle_diff_beam_to_detected_attacker_az = abs(beam_az_rad - detected_attacker_az_rad)
             angle_diff_beam_to_detected_attacker_az = min(angle_diff_beam_to_detected_attacker_az, 2*np.pi - angle_diff_beam_to_detected_attacker_az)
-            reward -= (1.0 - angle_diff_beam_to_detected_attacker_az / np.pi) * 3.0 * detection_confidence
+            reward -= (1.0 - angle_diff_beam_to_detected_attacker_az / np.pi) * 2.0 * detection_confidence
         else:
             bs_pos_np = self.bs_position.numpy()[0]
             attacker_pos_np = self.attacker_position.numpy()[0]
             true_attacker_range_val = np.linalg.norm(attacker_pos_np - bs_pos_np)
             if true_attacker_range_val < self.sensing_range_max * 0.5:
-                reward -= 0.5
+                reward -= 0.3
 
-        if self.current_isac_effort > 0.8: reward -= 0.2
+        if self.current_isac_effort > 0.8: reward -= 0.1
         elif self.current_isac_effort < 0.3: reward -= 0.05
         return float(reward)
 
     def render(self, mode='human'):
         if mode == 'human':
-            print(f"  Step: {self.current_step}, ISAC Effort: {self.current_isac_effort:.2f}")
-            # state = self._get_state() # _get_state is already called before render implicitly if needed
-            # For direct state from last step if available through an internal var or re-call:
-            current_render_state = self._get_state() # Or pass state to render if it's available
-            print(f"  Beam Angles (Az,El): ({np.rad2deg(current_render_state[1]):.1f}°, {np.rad2deg(current_render_state[2]):.1f}°)")
-            print(f"  User SINR: {current_render_state[0]:.2f} dB")
-            if current_render_state[6] > 0.1:
-                print(f"  Detected Attacker: Az={np.rad2deg(current_render_state[3]):.1f}°, El={np.rad2deg(current_render_state[4]):.1f}°, "
-                      f"Range={current_render_state[5]:.1f}m (Conf: {current_render_state[6]:.2f})")
+            print(f"Step: {self.current_step}, ISAC Effort: {self.current_isac_effort:.2f}")
+            current_render_state = self._get_state()
+            print(f"Beam Azimuth: {np.rad2deg(current_render_state[1]):.1f}°")
+            print(f"User SINR: {current_render_state[0]:.2f} dB")
+            if current_render_state[4] > 0.1:
+                print(f"Detected Attacker: Az={np.rad2deg(current_render_state[2]):.1f}°, "
+                      f"Range={current_render_state[3]:.1f}m (Conf: {current_render_state[4]:.2f})")
             else:
-                print("  Attacker Not Detected or Low Confidence.")
-            bs_pos_np = self.bs_position.numpy()[0]
-            attacker_pos_np = self.attacker_position.numpy()[0]
-            true_attacker_range_val = np.linalg.norm(attacker_pos_np - bs_pos_np)
-            print(f"  True Attacker Range: {true_attacker_range_val:.1f}m")
+                print("Attacker Not Detected or Low Confidence.")
 
     def close(self):
-        # print("Environment closing.") # Optional: can be removed if not adding specific cleanup
         pass
 
-# --- DRL Agent (DQN) ---
+# DRL Agent (DQN)
 class DQNAgent:
-    def __init__(self, state_dim, action_n, learning_rate=0.0005, gamma=0.99, 
+    def __init__(self, state_dim, action_n, learning_rate=0.0005, gamma=0.99,
                  epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=10000):
         self.state_dim = state_dim
         self.action_n = action_n
@@ -616,13 +498,11 @@ class DQNAgent:
         self.memory.append((state, action_idx, reward, next_state, done))
 
     def act(self, state):
-        self.current_learning_steps +=1 # Ensure this is called for epsilon decay logic
+        self.current_learning_steps += 1
         if np.random.rand() <= self.epsilon:
             return random.randrange(self.action_n)
-        
         if state.ndim == 1: state_for_pred = np.expand_dims(state, axis=0)
-        else: state_for_pred = state # Should already be [batch_size, state_dim] if coming from batch
-        
+        else: state_for_pred = state
         act_values = self.model.predict(state_for_pred, verbose=0)
         return np.argmax(act_values[0])
 
@@ -634,128 +514,153 @@ class DQNAgent:
         minibatch = [self.memory[i] for i in minibatch_indices]
 
         states = np.array([transition[0] for transition in minibatch])
-        actions = np.array([transition[1] for transition in minibatch]) # These are action indices
+        actions = np.array([transition[1] for transition in minibatch])
         rewards = np.array([transition[2] for transition in minibatch])
         next_states = np.array([transition[3] for transition in minibatch])
         dones = np.array([transition[4] for transition in minibatch])
 
         q_values_next_state_target_model = self.target_model.predict(next_states, verbose=0)
-        
-        # Bellman equation: target = r + gamma * max_a'(Q_target(s', a'))
         targets_for_taken_actions = rewards + self.gamma * np.amax(q_values_next_state_target_model, axis=1) * (1 - dones)
-        
-        # Get current Q-values from the main model for all actions
         current_q_values_all_actions = self.model.predict(states, verbose=0)
-        
-        # Update only the Q-value for the action that was actually taken
+
         for i in range(self.batch_size):
             current_q_values_all_actions[i, actions[i]] = targets_for_taken_actions[i]
-        
-        # Train the main model
-        history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0)
-        
-        if self.epsilon > self.epsilon_end:
-            self.epsilon -= self.epsilon_decay_value # Linear decay per replay step
-            self.epsilon = max(self.epsilon_end, self.epsilon) # Ensure it doesn't go below min
-        
-        return history.history['loss'][0]
 
-    def load(self, name):
-        try:
-            self.model.load_weights(name)
-            self.update_target_model()
-            print(f"Model weights loaded successfully from {name}")
-        except Exception as e:
-            print(f"Error loading model weights from {name}: {e}")
+        history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0)
+
+        if self.epsilon > self.epsilon_end:
+            self.epsilon -= self.epsilon_decay_value
+            self.epsilon = max(self.epsilon_end, self.epsilon)
+
+        return history.history['loss'][0]
 
     def save(self, name):
         try:
             self.model.save_weights(name)
-            print(f"Model weights saved successfully to {name}")
+            logging.info(f"Model weights saved to {name}")
         except Exception as e:
-            print(f"Error saving model weights to {name}: {e}")
+            logging.error(f"Error saving model weights to {name}: {e}")
 
-# --- Main simulation function ---
+# Main simulation function
 def run_simulation():
     print("Starting DRL Simulation for Secure mmWave ISAC Beamforming...")
     env = MmWaveISACEnv()
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
-    # Adjusted epsilon_decay_steps for potentially longer training
-    agent = DQNAgent(state_dim, action_n, epsilon_decay_steps=50000) 
+    agent = DQNAgent(state_dim, action_n, epsilon_decay_steps=10000)
 
-    episodes = 500
-    target_update_freq_steps = 1000 
+    episodes = 200
+    target_update_freq_steps = 1000
     print_freq_episodes = 10
-    save_freq_episodes = 100
-    
-    total_training_steps = 0 # Renamed for clarity
-    episode_rewards = []
-    avg_losses_per_print_freq = []
-
+    save_freq_episodes = 50
+    episode_data = []
+    attack_detections = []
+    total_training_steps = 0
 
     for e in range(episodes):
         current_state, _ = env.reset()
         total_episode_reward = 0
-        episode_losses = [] # Collect losses within an episode
+        episode_sinr = []
 
         for step in range(env.max_steps_per_episode):
             action_idx = agent.act(current_state)
             next_state, reward, terminated, truncated, info = env.step(action_idx)
+            episode_sinr.append(next_state[0])
+            detection_confidence = next_state[4]
+            detected_range = next_state[3]
+            attack_detected = 1 if (detection_confidence > 0.6 and 0 < detected_range < 75) else 0
+            attack_detections.append(attack_detected)
             agent.remember(current_state, action_idx, reward, next_state, terminated)
             current_state = next_state
             total_episode_reward += reward
 
             if len(agent.memory) >= agent.batch_size:
                 loss = agent.replay()
-                episode_losses.append(loss)
-                total_training_steps +=1 # Count each replay as a training step
+                total_training_steps += 1
 
-            if total_training_steps > 0 and total_training_steps % target_update_freq_steps == 0:
+            if total_training_steps % target_update_freq_steps == 0:
                 agent.update_target_model()
-                # print(f"Target model updated at episode {e+1}, total training step {total_training_steps}.") # Less frequent printing
-            
+
             if terminated or truncated:
                 break
-        
-        episode_rewards.append(total_episode_reward)
-        if episode_losses: # Avoid division by zero if no replays happened
-            avg_losses_per_print_freq.append(np.mean(episode_losses))
 
+        episode_data.append({
+            'Episode': e + 1,
+            'Total_Reward': total_episode_reward,
+            'Avg_SINR': np.mean(episode_sinr) if episode_sinr else 0,
+            'Steps': step + 1
+        })
 
         if (e + 1) % print_freq_episodes == 0:
-            avg_r = np.mean(episode_rewards[-(print_freq_episodes):]) if episode_rewards else 0
-            avg_l = np.mean(avg_losses_per_print_freq[-(print_freq_episodes):]) if avg_losses_per_print_freq else 0
-            print(f"Ep: {e+1}/{episodes}| Avg Reward (last {print_freq_episodes}): {avg_r:.2f}| Last Ep Reward: {total_episode_reward:.2f}| Avg Loss: {avg_l:.4f}| Epsilon: {agent.epsilon:.3f}| Steps in ep: {step+1}")
-            # env.render()
+            avg_r = np.mean([d['Total_Reward'] for d in episode_data[-print_freq_episodes:]])
+            avg_s = np.mean([d['Avg_SINR'] for d in episode_data[-print_freq_episodes:]])
+            detection_rate = np.mean(attack_detections[-print_freq_episodes*env.max_steps_per_episode:]) * 100
+            print(f"Ep: {e+1}/{episodes} | Avg Reward: {avg_r:.4f} | Avg SINR: {avg_s:.2f} dB | Detection Rate: {detection_rate:.2f}%")
 
         if (e + 1) % save_freq_episodes == 0:
-             agent.save(f"drl_beamsecure_sionna_ep{e+1}.weights.h5")
-    
-    env.close()
-    print("Training finished.")
+            agent.save(f"drl_beam_simplified_ep{e+1}.weights.h5")
 
+    # Save episode results
+    df = pd.DataFrame(episode_data)
+    df.to_csv('episode_results.csv', index=False)
+    print("Episode results saved to 'episode_results.csv'")
+
+    # Evaluation
+    evaluation_data = []
+    for _ in range(10):
+        state, _ = env.reset()
+        env.current_isac_effort = 0.0
+        env.current_beam_angles_tf.assign([0.0])
+        baseline_state = env._get_state()
+        baseline_sinr = baseline_state[0]
+        baseline_detected = 1 if (baseline_state[4] > 0.6 and 0 < baseline_state[3] < 75) else 0
+
+        state, _ = env.reset()
+        action_idx = agent.act(state)
+        next_state, _, _, _, _ = env.step(action_idx)
+        drl_sinr = next_state[0]
+        drl_detected = 1 if (next_state[4] > 0.6 and 0 < next_state[3] < 75) else 0
+
+        evaluation_data.append({
+            'Test': len(evaluation_data) + 1,
+            'Baseline_SINR': baseline_sinr,
+            'DRL_SINR': drl_sinr,
+            'Baseline_Detected': baseline_detected,
+            'DRL_Detected': drl_detected
+        })
+
+    # Save evaluation results
+    df_eval = pd.DataFrame(evaluation_data)
+    df_eval.to_csv('evaluation_results.csv', index=False)
+    print("Evaluation results saved to 'evaluation_results.csv'")
+    print(f"Average Baseline SINR: {np.mean([d['Baseline_SINR'] for d in evaluation_data]):.2f} dB")
+    print(f"Average DRL SINR: {np.mean([d['DRL_SINR'] for d in evaluation_data]):.2f} dB")
+    print(f"Baseline Detection Rate: {np.mean([d['Baseline_Detected'] for d in evaluation_data]) * 100:.2f}%")
+    print(f"DRL Detection Rate: {np.mean([d['DRL_Detected'] for d in evaluation_data]) * 100:.2f}%")
+
+    # Plotting
     try:
         import matplotlib.pyplot as plt
-        plt.figure(figsize=(12, 5))
-        plt.subplot(1, 2, 1)
-        plt.plot(episode_rewards)
+        plt.figure(figsize=(15, 5))
+        plt.subplot(1, 3, 1)
+        plt.plot([d['Total_Reward'] for d in episode_data])
         plt.title('Episode Rewards')
         plt.xlabel('Episode')
-        plt.ylabel('Total Reward per Episode')
+        plt.ylabel('Total Reward')
 
-        # Smoothing rewards for better trend visibility
-        if len(episode_rewards) >= print_freq_episodes:
-            smoothed_rewards = np.convolve(episode_rewards, np.ones(print_freq_episodes)/print_freq_episodes, mode='valid')
-            plt.plot(np.arange(print_freq_episodes-1, len(episode_rewards)), smoothed_rewards, label=f'Smoothed (window {print_freq_episodes})')
-            plt.legend()
-        
-        plt.subplot(1, 2, 2)
-        if avg_losses_per_print_freq: # Plot if there's loss data
-            plt.plot(avg_losses_per_print_freq)
-            plt.title('Average Loss per Print Frequency')
-            plt.xlabel(f'Episode Block (x{print_freq_episodes})')
-            plt.ylabel('Average Loss')
+        plt.subplot(1, 3, 2)
+        plt.plot([d['Avg_SINR'] for d in episode_data])
+        plt.title('Average SINR per Episode')
+        plt.xlabel('Episode')
+        plt.ylabel('SINR (dB)')
+
+        plt.subplot(1, 3, 3)
+        detection_rates = [np.mean(attack_detections[i:i+print_freq_episodes*env.max_steps_per_episode]) * 100 
+                          for i in range(0, len(attack_detections), print_freq_episodes*env.max_steps_per_episode)]
+        plt.plot(detection_rates)
+        plt.title('Attack Detection Rate')
+        plt.xlabel(f'Episode Block (x{print_freq_episodes})')
+        plt.ylabel('Detection Rate (%)')
 
         plt.tight_layout()
         plt.savefig('training_progress.png')
@@ -763,11 +668,13 @@ def run_simulation():
     except ImportError:
         print("Matplotlib not found. Skipping plot generation.")
 
+    env.close()
+    print("Training finished.")
 
 if __name__ == "__main__":
     gpus = tf.config.list_physical_devices('GPU')
     if gpus:
-        print(f"Found {len(gpus)} Physical GPU(s):")
+        print(f"Found {len(gpus)} GPU(s):")
         try:
             for i, gpu in enumerate(gpus):
                 tf.config.experimental.set_memory_growth(gpu, True)
@@ -777,5 +684,5 @@ if __name__ == "__main__":
         except RuntimeError as e:
             print(f"RuntimeError during GPU setup: {e}")
     else:
-        print("No GPU detected by TensorFlow. Model will run on CPU.")
+        print("No GPU detected. Running on CPU.")
     run_simulation()

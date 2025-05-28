@@ -6005,3 +6005,220 @@
 2025-05-28 05:07:07,836 - DEBUG - Entering MmWaveISACEnv.reset
 2025-05-28 05:07:07,837 - DEBUG - Entering _get_state
 2025-05-28 05:07:07,837 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:08,014 - DEBUG - h_user norm: (2.1716505216318183e-05+1.5780340697894336e-14j)
+2025-05-28 05:07:08,188 - DEBUG - h_attacker norm: (0.00027418197714723647+1.8562174095970024e-13j)
+2025-05-28 05:07:08,188 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:08,190 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:08,193 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:08,194 - DEBUG - Signal power user: 1.431625949515833e-13, attacker: 2.995718256793012e-12
+2025-05-28 05:07:08,195 - DEBUG - Returning state_array: [-30.          0.         -3.1415927   0.          0.       ]
+2025-05-28 05:07:08,195 - DEBUG - reset returning obs shape: (5,)
+2025-05-28 05:07:08,195 - DEBUG - Entering step with action_idx: 4
+2025-05-28 05:07:08,195 - DEBUG - Entering _get_state
+2025-05-28 05:07:08,195 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:08,371 - DEBUG - h_user norm: (0.0043389638885855675-7.871666101062769e-13j)
+2025-05-28 05:07:08,548 - DEBUG - h_attacker norm: (0.00021230816491879523-2.664946408892973e-14j)
+2025-05-28 05:07:08,548 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:08,550 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:08,553 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:08,554 - DEBUG - Signal power user: 1.1912093533794632e-08, attacker: 4.881121114935771e-12
+2025-05-28 05:07:08,555 - DEBUG - Returning state_array: [30.         0.        -3.1415927  0.         0.       ]
+2025-05-28 05:07:08,702 - DEBUG - Entering step with action_idx: 0
+2025-05-28 05:07:08,703 - DEBUG - Entering _get_state
+2025-05-28 05:07:08,703 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:08,882 - DEBUG - h_user norm: (0.005876114126294851-2.075561077174992e-12j)
+2025-05-28 05:07:09,058 - DEBUG - h_attacker norm: (0.0034567294642329216-2.514930538127791e-12j)
+2025-05-28 05:07:09,058 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:09,059 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:09,062 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:09,064 - DEBUG - Signal power user: 6.116017914337135e-09, attacker: 3.795246072968439e-08
+2025-05-28 05:07:09,065 - DEBUG - Returning state_array: [30.         -0.08726646 -3.1415927   0.          0.        ]
+2025-05-28 05:07:09,216 - DEBUG - Entering step with action_idx: 3
+2025-05-28 05:07:09,217 - DEBUG - Entering _get_state
+2025-05-28 05:07:09,217 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:09,397 - DEBUG - h_user norm: (1.8591643311083317e-05-7.798344354168277e-15j)
+2025-05-28 05:07:09,575 - DEBUG - h_attacker norm: (0.002878615166991949-2.9677918109149992e-12j)
+2025-05-28 05:07:09,575 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:09,576 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:09,579 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:09,581 - DEBUG - Signal power user: 1.915858507131824e-15, attacker: 2.118156672281657e-08
+2025-05-28 05:07:09,582 - DEBUG - Returning state_array: [-30.          -0.08726646  -0.27372152  68.4082       0.2469603 ]
+2025-05-28 05:07:09,732 - DEBUG - Entering MmWaveISACEnv.reset
+2025-05-28 05:07:09,733 - DEBUG - Entering _get_state
+2025-05-28 05:07:09,733 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:09,911 - DEBUG - h_user norm: (0.0005241436883807182+9.299555754366945e-14j)
+2025-05-28 05:07:10,089 - DEBUG - h_attacker norm: (2.7172942282049917e-05-1.3063518094959953e-14j)
+2025-05-28 05:07:10,089 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:10,090 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:10,093 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:10,095 - DEBUG - Signal power user: 1.533104060369439e-10, attacker: 1.7412644338020943e-14
+2025-05-28 05:07:10,096 - DEBUG - Returning state_array: [25.855717   0.        -3.1415927  0.         0.       ]
+2025-05-28 05:07:10,096 - DEBUG - reset returning obs shape: (5,)
+2025-05-28 05:07:10,096 - DEBUG - Entering step with action_idx: 4
+2025-05-28 05:07:10,096 - DEBUG - Entering _get_state
+2025-05-28 05:07:10,097 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:10,276 - DEBUG - h_user norm: (2.8835238481406122e-05+2.880450733619075e-14j)
+2025-05-28 05:07:10,455 - DEBUG - h_attacker norm: (2.0330200641183183e-05-2.584204179042083e-14j)
+2025-05-28 05:07:10,455 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:10,457 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:10,460 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:10,461 - DEBUG - Signal power user: 5.994716008317358e-12, attacker: 3.022263700153821e-14
+2025-05-28 05:07:10,462 - DEBUG - Returning state_array: [11.777686   0.        -3.1415927  0.         0.       ]
+2025-05-28 05:07:10,772 - DEBUG - Entering step with action_idx: 1
+2025-05-28 05:07:10,773 - DEBUG - Entering _get_state
+2025-05-28 05:07:10,773 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:10,952 - DEBUG - h_user norm: (0.00036467579775489867-5.861062096811434e-14j)
+2025-05-28 05:07:11,130 - DEBUG - h_attacker norm: (0.0003363499999977648+1.4170957430507253e-13j)
+2025-05-28 05:07:11,130 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:11,131 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:11,135 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:11,136 - DEBUG - Signal power user: 7.379708510946159e-10, attacker: 3.569337317030352e-12
+2025-05-28 05:07:11,137 - DEBUG - Returning state_array: [ 3.0000000e+01  8.7266460e-02 -7.9433188e-02  6.3486561e+01
+  1.0382371e-02]
+2025-05-28 05:07:11,287 - DEBUG - Entering step with action_idx: 2
+2025-05-28 05:07:11,288 - DEBUG - Entering _get_state
+2025-05-28 05:07:11,288 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:11,468 - DEBUG - h_user norm: (2.9325590730877593e-05-9.395428364348049e-15j)
+2025-05-28 05:07:11,646 - DEBUG - h_attacker norm: (5.289700766297756e-06+2.3846554562950576e-15j)
+2025-05-28 05:07:11,646 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:11,647 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:11,650 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:11,652 - DEBUG - Signal power user: 8.693887623700824e-12, attacker: 1.2677162650794743e-13
+2025-05-28 05:07:11,653 - DEBUG - Returning state_array: [13.392139    0.08726646 -3.1415927   0.          0.        ]
+2025-05-28 05:07:11,985 - DEBUG - Entering step with action_idx: 0
+2025-05-28 05:07:11,985 - DEBUG - Entering _get_state
+2025-05-28 05:07:11,986 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:12,165 - DEBUG - h_user norm: (0.00032665193430148065+4.8640108901590404e-15j)
+2025-05-28 05:07:12,342 - DEBUG - h_attacker norm: (0.00018858762632589787-4.203674422984839e-14j)
+2025-05-28 05:07:12,342 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:12,344 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:12,347 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:12,348 - DEBUG - Signal power user: 4.123538316358477e-11, attacker: 8.667522949368234e-11
+2025-05-28 05:07:12,349 - DEBUG - Returning state_array: [ 2.0152700e+01 -2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00]
+2025-05-28 05:07:12,497 - DEBUG - Entering step with action_idx: 3
+2025-05-28 05:07:12,498 - DEBUG - Entering _get_state
+2025-05-28 05:07:12,498 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:12,675 - DEBUG - h_user norm: (0.0004989236476831138+4.5085676592939924e-14j)
+2025-05-28 05:07:12,851 - DEBUG - h_attacker norm: (1.2661342225328553e-05-3.1825151763459304e-15j)
+2025-05-28 05:07:12,851 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:12,853 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:12,856 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:12,857 - DEBUG - Signal power user: 1.2940835902863768e-10, attacker: 1.3730289691663011e-12
+2025-05-28 05:07:12,858 - DEBUG - Returning state_array: [ 2.5119625e+01 -2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00]
+2025-05-28 05:07:13,177 - DEBUG - Entering step with action_idx: 0
+2025-05-28 05:07:13,179 - DEBUG - Entering _get_state
+2025-05-28 05:07:13,179 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:13,359 - DEBUG - h_user norm: (3.8909365684958175e-07+3.986147108294986e-16j)
+2025-05-28 05:07:13,536 - DEBUG - h_attacker norm: (0.00025324939633719623+2.618756448670434e-13j)
+2025-05-28 05:07:13,536 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:13,537 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:13,540 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:13,542 - DEBUG - Signal power user: 1.9346383062159704e-17, attacker: 7.065559248786712e-10
+2025-05-28 05:07:13,542 - DEBUG - Returning state_array: [-30.          -0.08726647  -3.1415927    0.           0.        ]
+2025-05-28 05:07:13,694 - DEBUG - Entering MmWaveISACEnv.reset
+2025-05-28 05:07:13,695 - DEBUG - Entering _get_state
+2025-05-28 05:07:13,695 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:13,872 - DEBUG - h_user norm: (0.0002711827401071787+2.6895335730661024e-14j)
+2025-05-28 05:07:14,048 - DEBUG - h_attacker norm: (0.0040504117496311665+6.31546084959439e-13j)
+2025-05-28 05:07:14,048 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:14,049 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:14,052 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:14,054 - DEBUG - Signal power user: 1.6063400609667156e-11, attacker: 1.863475346253196e-10
+2025-05-28 05:07:14,055 - DEBUG - Returning state_array: [16.058374   0.        -3.1415927  0.         0.       ]
+2025-05-28 05:07:14,055 - DEBUG - reset returning obs shape: (5,)
+2025-05-28 05:07:14,055 - DEBUG - Entering step with action_idx: 4
+2025-05-28 05:07:14,055 - DEBUG - Entering _get_state
+2025-05-28 05:07:14,056 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:14,232 - DEBUG - h_user norm: (0.0005235777352936566+6.655158195367772e-14j)
+2025-05-28 05:07:14,409 - DEBUG - h_attacker norm: (0.021397950127720833-1.1735161453696463e-12j)
+2025-05-28 05:07:14,409 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:14,410 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:14,414 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:14,415 - DEBUG - Signal power user: 4.6087342275846765e-11, attacker: 2.736486148791073e-09
+2025-05-28 05:07:14,416 - DEBUG - Returning state_array: [20.635815   0.        -3.1415927  0.         0.       ]
+2025-05-28 05:07:14,560 - DEBUG - Entering step with action_idx: 4
+2025-05-28 05:07:14,561 - DEBUG - Entering _get_state
+2025-05-28 05:07:14,561 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:14,740 - DEBUG - h_user norm: (0.0005364352837204933-4.0390024766585875e-13j)
+2025-05-28 05:07:14,918 - DEBUG - h_attacker norm: (1.647282078920398e-05+7.763245002899953e-15j)
+2025-05-28 05:07:14,919 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:14,920 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:14,923 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:14,925 - DEBUG - Signal power user: 4.3125579496372524e-11, attacker: 2.29431355641338e-13
+2025-05-28 05:07:14,926 - DEBUG - Returning state_array: [20.347347   0.        -3.1415927  0.         0.       ]
+2025-05-28 05:07:15,082 - DEBUG - Entering step with action_idx: 1
+2025-05-28 05:07:15,083 - DEBUG - Entering _get_state
+2025-05-28 05:07:15,083 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:15,261 - DEBUG - h_user norm: (0.00015732851170469075-2.072510999623356e-13j)
+2025-05-28 05:07:15,438 - DEBUG - h_attacker norm: (0.005299701821058989+1.0950826833874827e-12j)
+2025-05-28 05:07:15,438 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:15,439 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:15,442 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:15,444 - DEBUG - Signal power user: 1.1307892816558862e-10, attacker: 2.2504311303350732e-08
+2025-05-28 05:07:15,445 - DEBUG - Returning state_array: [24.533815    0.08726646 -3.1415927   0.          0.        ]
+2025-05-28 05:07:15,601 - DEBUG - Entering step with action_idx: 2
+2025-05-28 05:07:15,602 - DEBUG - Entering _get_state
+2025-05-28 05:07:15,602 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:15,782 - DEBUG - h_user norm: (0.00036211300175637007+1.8328115175721138e-13j)
+2025-05-28 05:07:15,959 - DEBUG - h_attacker norm: (1.0699801350710914e-05+1.5058339978050138e-14j)
+2025-05-28 05:07:15,959 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:15,961 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:15,964 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:15,965 - DEBUG - Signal power user: 6.244507133601473e-10, attacker: 5.674471309502493e-13
+2025-05-28 05:07:15,966 - DEBUG - Returning state_array: [30.          0.08726646 -3.1415927   0.          0.        ]
+2025-05-28 05:07:16,115 - DEBUG - Entering step with action_idx: 3
+2025-05-28 05:07:16,116 - DEBUG - Entering _get_state
+2025-05-28 05:07:16,116 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:16,295 - DEBUG - h_user norm: (0.0002304675872437656+1.8986679904079568e-13j)
+2025-05-28 05:07:16,473 - DEBUG - h_attacker norm: (2.9501014068955556e-05+1.2718764673999138e-14j)
+2025-05-28 05:07:16,473 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:16,474 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 05:07:16,477 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-05-28 05:07:16,478 - DEBUG - Signal power user: 2.493761863675559e-10, attacker: 2.1299719800416117e-12
+2025-05-28 05:07:16,480 - DEBUG - Returning state_array: [27.96855     0.08726646 -3.1415927   0.          0.        ]
+2025-05-28 05:07:16,803 - DEBUG - Entering step with action_idx: 0
+2025-05-28 05:07:16,804 - DEBUG - Entering _get_state
+2025-05-28 05:07:16,804 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:16,982 - DEBUG - h_user norm: (0.0007760895532555878+6.712185061236164e-13j)
+2025-05-28 05:07:17,160 - DEBUG - h_attacker norm: (0.009449796751141548+4.024084451076382e-12j)
+2025-05-28 05:07:17,161 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:17,162 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:17,165 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:17,167 - DEBUG - Signal power user: 1.316565467757158e-10, attacker: 8.468922230164821e-10
+2025-05-28 05:07:17,168 - DEBUG - Returning state_array: [ 2.5194424e+01 -2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00]
+2025-05-28 05:07:17,318 - DEBUG - Entering step with action_idx: 2
+2025-05-28 05:07:17,319 - DEBUG - Entering _get_state
+2025-05-28 05:07:17,319 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:17,496 - DEBUG - h_user norm: (0.0006354366196319461-2.356120398609718e-14j)
+2025-05-28 05:07:17,672 - DEBUG - h_attacker norm: (0.013167212717235088-6.201989876525316e-12j)
+2025-05-28 05:07:17,672 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:17,674 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:17,677 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:17,678 - DEBUG - Signal power user: 7.815000729882726e-11, attacker: 2.0792778610001506e-09
+2025-05-28 05:07:17,679 - DEBUG - Returning state_array: [ 2.2929289e+01 -2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00]
+2025-05-28 05:07:17,964 - DEBUG - Entering step with action_idx: 4
+2025-05-28 05:07:17,966 - DEBUG - Entering _get_state
+2025-05-28 05:07:17,966 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:18,172 - DEBUG - h_user norm: (0.00040398971759714186+7.513274399330305e-14j)
+2025-05-28 05:07:18,348 - DEBUG - h_attacker norm: (0.007744068745523691-1.8014516473593284e-13j)
+2025-05-28 05:07:18,348 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:18,349 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:18,352 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:18,354 - DEBUG - Signal power user: 5.916727524590826e-11, attacker: 1.84233317490623e-09
+2025-05-28 05:07:18,355 - DEBUG - Returning state_array: [ 2.1720818e+01 -2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00]
+2025-05-28 05:07:18,502 - DEBUG - Entering step with action_idx: 2
+2025-05-28 05:07:18,503 - DEBUG - Entering _get_state
+2025-05-28 05:07:18,503 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 05:07:18,682 - DEBUG - h_user norm: (0.0005501219420693815+2.129859466961162e-13j)
+2025-05-28 05:07:18,860 - DEBUG - h_attacker norm: (1.3732754268858116e-05-1.1708295025506226e-14j)
+2025-05-28 05:07:18,860 - DEBUG - Entering _get_steering_vector
+2025-05-28 05:07:18,862 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 05:07:18,865 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-05-28 05:07:18,866 - DEBUG - Signal power user: 9.938087852656707e-11, attacker: 9.75605242988333e-16
+2025-05-28 05:07:18,868 - DEBUG - Returning state_array: [ 2.3973028e+01 -2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00]

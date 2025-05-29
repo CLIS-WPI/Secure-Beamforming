@@ -201,3 +201,271 @@
 2025-05-28 20:16:57,498 - DEBUG - Entering step with action_idx: 4
 2025-05-28 20:16:57,499 - DEBUG - Entering _get_state
 2025-05-28 20:16:57,499 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:16:57,679 - DEBUG - h_user norm: (3.0045177481952123e-05-2.9221284815689544e-14j)
+2025-05-28 20:16:57,858 - DEBUG - h_attacker norm: (0.01148869376629591-3.827383288773634e-12j)
+2025-05-28 20:16:57,858 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:16:57,860 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:16:57,860 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:16:57,862 - DEBUG - Signal power user: 8.60785574763323e-12, attacker: 8.06563988930975e-08
+2025-05-28 20:16:57,863 - DEBUG - prob_detection: 0.3256408212751669, true_attacker_range: 47.76032638549805, isac_effort: 0.3
+2025-05-28 20:16:57,863 - DEBUG - Returning state_array: [13.348949   -0.08726646 -3.1415927   0.          0.         47.760326
+ -0.30788502]
+2025-05-28 20:16:57,866 - DEBUG - Entering step with action_idx: 1
+2025-05-28 20:16:57,867 - DEBUG - Entering _get_state
+2025-05-28 20:16:57,867 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:16:58,047 - DEBUG - h_user norm: (0.003171773860231042-3.7862375452772656e-13j)
+2025-05-28 20:16:58,228 - DEBUG - h_attacker norm: (3.318101153126918e-05-3.560813854875094e-15j)
+2025-05-28 20:16:58,228 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:16:58,229 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 20:16:58,230 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:16:58,231 - DEBUG - Signal power user: 2.9954847491353576e-07, attacker: 2.94117646904013e-11
+2025-05-28 20:16:58,232 - DEBUG - prob_detection: 0.32481333775285376, true_attacker_range: 48.0147590637207, isac_effort: 0.3
+2025-05-28 20:16:58,233 - DEBUG - Returning state_array: [ 3.0000000e+01  2.5386431e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00  4.8014759e+01 -3.0714786e-01]
+2025-05-28 20:16:58,236 - DEBUG - Entering step with action_idx: 4
+2025-05-28 20:16:58,236 - DEBUG - Entering _get_state
+2025-05-28 20:16:58,236 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:16:58,416 - DEBUG - h_user norm: (0.001391656114719808+1.435487064502597e-13j)
+2025-05-28 20:16:58,596 - DEBUG - h_attacker norm: (0.01441890001296997+8.897865083623557e-12j)
+2025-05-28 20:16:58,597 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:16:58,598 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 20:16:58,599 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:16:58,600 - DEBUG - Signal power user: 5.142837622429397e-08, attacker: 7.690722725328669e-08
+2025-05-28 20:16:58,601 - DEBUG - prob_detection: 0.3235378279878951, true_attacker_range: 48.40822219848633, isac_effort: 0.3
+2025-05-28 20:16:58,601 - DEBUG - Attacker detected: confidence=0.4036274530649584, detected_range=50.71498718423681, detected_az=-0.31199566144715324
+2025-05-28 20:16:58,601 - DEBUG - Returning state_array: [ 3.0000000e+01  2.5386431e-09 -3.1199566e-01  5.0714989e+01
+  4.0362746e-01  4.8408222e+01 -3.0531517e-01]
+2025-05-28 20:17:00,658 - DEBUG - Entering step with action_idx: 3
+2025-05-28 20:17:00,660 - DEBUG - Entering _get_state
+2025-05-28 20:17:00,660 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:00,858 - DEBUG - h_user norm: (0.0062835984863340855-1.4237927243448967e-12j)
+2025-05-28 20:17:01,038 - DEBUG - h_attacker norm: (0.0330645777285099-5.8989024602496e-12j)
+2025-05-28 20:17:01,038 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:01,039 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 20:17:01,040 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:01,041 - DEBUG - Signal power user: 1.0580673688309616e-06, attacker: 1.4653907953743328e-07
+2025-05-28 20:17:01,042 - DEBUG - prob_detection: 0.5387984305237256, true_attacker_range: 48.48823547363281, isac_effort: 0.5
+2025-05-28 20:17:01,042 - DEBUG - Attacker detected: confidence=0.5777877614638955, detected_range=48.25501141779117, detected_az=-0.4423908297555902
+2025-05-28 20:17:01,043 - DEBUG - Returning state_array: [ 3.0000000e+01  2.5386431e-09 -4.4239083e-01  4.8255013e+01
+  5.7778776e-01  4.8488235e+01 -3.0362815e-01]
+2025-05-28 20:17:01,491 - DEBUG - Entering step with action_idx: 1
+2025-05-28 20:17:01,492 - DEBUG - Entering _get_state
+2025-05-28 20:17:01,492 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:01,672 - DEBUG - h_user norm: (0.0015220993664115667-8.584291589196213e-13j)
+2025-05-28 20:17:01,852 - DEBUG - h_attacker norm: (0.012025541625916958+3.1198518161273947e-12j)
+2025-05-28 20:17:01,852 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:01,853 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:01,854 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:01,855 - DEBUG - Signal power user: 6.033926780446563e-08, attacker: 7.283521341605592e-08
+2025-05-28 20:17:01,856 - DEBUG - prob_detection: 0.5369827355390666, true_attacker_range: 48.8257942199707, isac_effort: 0.5
+2025-05-28 20:17:01,857 - DEBUG - Returning state_array: [30.          0.08726647 -3.1415927   0.          0.         48.825794
+ -0.3055954 ]
+2025-05-28 20:17:02,123 - DEBUG - Entering step with action_idx: 3
+2025-05-28 20:17:02,125 - DEBUG - Entering _get_state
+2025-05-28 20:17:02,125 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:02,305 - DEBUG - h_user norm: (0.003982061520218849+1.9992553619563314e-12j)
+2025-05-28 20:17:02,484 - DEBUG - h_attacker norm: (9.364027391711716e-06+5.812585300097239e-15j)
+2025-05-28 20:17:02,484 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:02,486 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:02,486 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:02,488 - DEBUG - Signal power user: 4.033229004107852e-07, attacker: 1.7376390040388379e-12
+2025-05-28 20:17:02,488 - DEBUG - prob_detection: 0.7519630628677973, true_attacker_range: 48.8008918762207, isac_effort: 0.7
+2025-05-28 20:17:02,489 - DEBUG - Returning state_array: [30.          0.08726647 -3.1415927   0.          0.         48.80089
+ -0.30497935]
+2025-05-28 20:17:02,812 - DEBUG - Entering step with action_idx: 4
+2025-05-28 20:17:02,813 - DEBUG - Entering _get_state
+2025-05-28 20:17:02,813 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:02,995 - DEBUG - h_user norm: (0.00389467622153461-1.5301590289978906e-12j)
+2025-05-28 20:17:03,173 - DEBUG - h_attacker norm: (0.027038410305976868+2.3394749679161997e-12j)
+2025-05-28 20:17:03,174 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:03,175 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:03,176 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:03,177 - DEBUG - Signal power user: 3.7904717942183197e-07, attacker: 1.548234962456263e-07
+2025-05-28 20:17:03,178 - DEBUG - prob_detection: 0.5367050611976476, true_attacker_range: 48.87751770019531, isac_effort: 0.49999999999999994
+2025-05-28 20:17:03,178 - DEBUG - Attacker detected: confidence=0.5032476966394563, detected_range=49.31911996768195, detected_az=-0.2610107996688329
+2025-05-28 20:17:03,178 - DEBUG - Returning state_array: [30.          0.08726647 -0.2610108  49.31912     0.5032477  48.877518
+ -0.30217502]
+2025-05-28 20:17:03,447 - DEBUG - Entering step with action_idx: 2
+2025-05-28 20:17:03,448 - DEBUG - Entering _get_state
+2025-05-28 20:17:03,448 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:03,628 - DEBUG - h_user norm: (0.008013454265892506-3.6230376337931247e-12j)
+2025-05-28 20:17:03,807 - DEBUG - h_attacker norm: (3.306030703242868e-05+2.269821802031429e-14j)
+2025-05-28 20:17:03,807 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:03,808 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:03,809 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:03,810 - DEBUG - Signal power user: 1.3745235492024221e-06, attacker: 1.027682279552966e-12
+2025-05-28 20:17:03,811 - DEBUG - prob_detection: 0.5366374204438128, true_attacker_range: 48.89012145996094, isac_effort: 0.49999999999999994
+2025-05-28 20:17:03,811 - DEBUG - Attacker detected: confidence=0.5148546245458302, detected_range=48.00210198349882, detected_az=-0.16911491188174255
+2025-05-28 20:17:03,812 - DEBUG - Returning state_array: [30.          0.08726647 -0.16911492 48.0021      0.5148546  48.89012
+ -0.29321936]
+2025-05-28 20:17:04,084 - DEBUG - Entering step with action_idx: 0
+2025-05-28 20:17:04,086 - DEBUG - Entering _get_state
+2025-05-28 20:17:04,086 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:04,265 - DEBUG - h_user norm: (0.005370745901018381+3.1599007942586035e-14j)
+2025-05-28 20:17:04,443 - DEBUG - h_attacker norm: (2.3064545530360192e-05-1.2231880818554947e-14j)
+2025-05-28 20:17:04,443 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:04,445 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 20:17:04,445 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:04,446 - DEBUG - Signal power user: 6.513072321467916e-07, attacker: 3.1627600538541856e-10
+2025-05-28 20:17:04,447 - DEBUG - prob_detection: 0.5372136428456983, true_attacker_range: 48.78280258178711, isac_effort: 0.49999999999999994
+2025-05-28 20:17:04,448 - DEBUG - Returning state_array: [ 3.0000000e+01  4.9119375e-09 -3.1415927e+00  0.0000000e+00
+  0.0000000e+00  4.8782803e+01 -2.9440415e-01]
+2025-05-28 20:17:04,725 - DEBUG - Entering step with action_idx: 1
+2025-05-28 20:17:04,726 - DEBUG - Entering _get_state
+2025-05-28 20:17:04,726 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:04,905 - DEBUG - h_user norm: (0.014512688852846622-4.476300406730527e-12j)
+2025-05-28 20:17:05,083 - DEBUG - h_attacker norm: (1.9345295640960103e-06-1.902501432828334e-15j)
+2025-05-28 20:17:05,083 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:05,084 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:05,085 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:05,086 - DEBUG - Signal power user: 4.455052931007231e-06, attacker: 9.76584349547888e-15
+2025-05-28 20:17:05,087 - WARNING - Signal power attacker too low, setting default
+2025-05-28 20:17:05,087 - DEBUG - prob_detection: 0.5363950769687412, true_attacker_range: 48.9352912902832, isac_effort: 0.49999999999999994
+2025-05-28 20:17:05,087 - DEBUG - Attacker detected: confidence=0.5102341744978631, detected_range=48.70797650894382, detected_az=-0.288517537760146
+2025-05-28 20:17:05,088 - DEBUG - Returning state_array: [30.          0.08726647 -0.28851753 48.707977    0.5102342  48.93529
+ -0.30248168]
+2025-05-28 20:17:05,359 - DEBUG - Entering step with action_idx: 3
+2025-05-28 20:17:05,360 - DEBUG - Entering _get_state
+2025-05-28 20:17:05,360 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:05,540 - DEBUG - h_user norm: (1.2286328455957118e-05+2.8968912196088072e-15j)
+2025-05-28 20:17:05,719 - DEBUG - h_attacker norm: (0.010503959842026234-8.760030027754606e-12j)
+2025-05-28 20:17:05,719 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:05,721 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:05,721 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:05,723 - DEBUG - Signal power user: 1.3035959030988087e-12, attacker: 9.052318716840091e-08
+2025-05-28 20:17:05,723 - DEBUG - prob_detection: 0.7539267663568676, true_attacker_range: 48.54008865356445, isac_effort: 0.7
+2025-05-28 20:17:05,724 - DEBUG - Attacker detected: confidence=0.7430557424957874, detected_range=49.14422004406997, detected_az=-0.31595141208158345
+2025-05-28 20:17:05,724 - DEBUG - Returning state_array: [ 5.1514297   0.08726647 -0.3159514  49.14422     0.74305576 48.54009
+ -0.31077433]
+2025-05-28 20:17:05,992 - DEBUG - Entering step with action_idx: 2
+2025-05-28 20:17:05,993 - DEBUG - Entering _get_state
+2025-05-28 20:17:05,993 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:06,173 - DEBUG - h_user norm: (0.00880843959748745-4.5012214441864096e-12j)
+2025-05-28 20:17:06,352 - DEBUG - h_attacker norm: (0.027729691937565804+4.4070563171016985e-12j)
+2025-05-28 20:17:06,352 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:06,353 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:06,354 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:06,355 - DEBUG - Signal power user: 1.1951286751354928e-06, attacker: 3.164481370276917e-07
+2025-05-28 20:17:06,356 - DEBUG - prob_detection: 0.7532872997340482, true_attacker_range: 48.624942779541016, isac_effort: 0.7
+2025-05-28 20:17:06,356 - DEBUG - Attacker detected: confidence=0.8060402588986536, detected_range=50.2168891183987, detected_az=-0.38569223266212815
+2025-05-28 20:17:06,357 - DEBUG - Returning state_array: [30.          0.08726647 -0.38569224 50.21689     0.8060403  48.624943
+ -0.30560723]
+2025-05-28 20:17:06,631 - DEBUG - Entering step with action_idx: 2
+2025-05-28 20:17:06,632 - DEBUG - Entering _get_state
+2025-05-28 20:17:06,632 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:06,813 - DEBUG - h_user norm: (0.012629108503460884-2.7499311421735895e-12j)
+2025-05-28 20:17:06,992 - DEBUG - h_attacker norm: (4.104489562450908e-05+3.0940683771584626e-14j)
+2025-05-28 20:17:06,992 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:06,994 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:06,994 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:06,996 - DEBUG - Signal power user: 2.56921885011252e-06, attacker: 4.667192674001619e-11
+2025-05-28 20:17:06,997 - DEBUG - prob_detection: 0.7532358647123939, true_attacker_range: 48.631771087646484, isac_effort: 0.7
+2025-05-28 20:17:06,997 - DEBUG - Attacker detected: confidence=0.7345814060229102, detected_range=48.52596040220463, detected_az=-0.3589488272243587
+2025-05-28 20:17:06,997 - DEBUG - Returning state_array: [30.          0.08726647 -0.35894883 48.52596     0.7345814  48.63177
+ -0.30593792]
+2025-05-28 20:17:07,423 - DEBUG - Entering step with action_idx: 1
+2025-05-28 20:17:07,425 - DEBUG - Entering _get_state
+2025-05-28 20:17:07,425 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:07,657 - DEBUG - h_user norm: (0.005148503463715315-2.0896786905033604e-12j)
+2025-05-28 20:17:07,846 - DEBUG - h_attacker norm: (0.03052954189479351+1.007318100459953e-11j)
+2025-05-28 20:17:07,846 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:07,848 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-05-28 20:17:07,848 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:07,850 - DEBUG - Signal power user: 3.7943976849419414e-07, attacker: 4.921832328363962e-07
+2025-05-28 20:17:07,851 - DEBUG - prob_detection: 0.7540622094734007, true_attacker_range: 48.522125244140625, isac_effort: 0.7
+2025-05-28 20:17:07,851 - DEBUG - Attacker detected: confidence=0.6892681118944202, detected_range=50.82230650436674, detected_az=-0.3160756142512757
+2025-05-28 20:17:07,851 - DEBUG - Returning state_array: [30.          0.17453294 -0.31607562 50.822308    0.6892681  48.522125
+ -0.30502206]
+2025-05-28 20:17:08,131 - DEBUG - Entering step with action_idx: 1
+2025-05-28 20:17:08,132 - DEBUG - Entering _get_state
+2025-05-28 20:17:08,132 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:08,312 - DEBUG - h_user norm: (0.0061926390044391155-4.3838756409730895e-12j)
+2025-05-28 20:17:08,490 - DEBUG - h_attacker norm: (0.026305820792913437+5.0600016933627714e-14j)
+2025-05-28 20:17:08,490 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:08,492 - DEBUG - f_theta: 2.333712339401245, f_phi: 0.0
+2025-05-28 20:17:08,492 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:08,494 - DEBUG - Signal power user: 8.716792763152625e-07, attacker: 2.6983943257619103e-07
+2025-05-28 20:17:08,495 - DEBUG - prob_detection: 0.7520853574540114, true_attacker_range: 48.784629821777344, isac_effort: 0.7
+2025-05-28 20:17:08,495 - DEBUG - Returning state_array: [30.          0.2617994  -3.1415927   0.          0.         48.78463
+ -0.30235448]
+2025-05-28 20:17:08,883 - DEBUG - Entering step with action_idx: 2
+2025-05-28 20:17:08,885 - DEBUG - Entering _get_state
+2025-05-28 20:17:08,885 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:09,063 - DEBUG - h_user norm: (0.0033633860293775797-2.848312609534352e-14j)
+2025-05-28 20:17:09,242 - DEBUG - h_attacker norm: (0.026418715715408325-1.2652973287174962e-11j)
+2025-05-28 20:17:09,242 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:09,244 - DEBUG - f_theta: 2.333712339401245, f_phi: 0.0
+2025-05-28 20:17:09,244 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:09,246 - DEBUG - Signal power user: 2.3788787473222328e-07, attacker: 2.770733544821269e-07
+2025-05-28 20:17:09,247 - DEBUG - prob_detection: 0.7526387285743649, true_attacker_range: 48.71107864379883, isac_effort: 0.7
+2025-05-28 20:17:09,247 - DEBUG - Attacker detected: confidence=0.7791213613562663, detected_range=48.84102482325745, detected_az=-0.30334848752273086
+2025-05-28 20:17:09,247 - DEBUG - Returning state_array: [30.          0.2617994  -0.30334848 48.841026    0.77912134 48.71108
+ -0.3041997 ]
+2025-05-28 20:17:09,520 - DEBUG - Entering step with action_idx: 0
+2025-05-28 20:17:09,521 - DEBUG - Entering _get_state
+2025-05-28 20:17:09,521 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:09,701 - DEBUG - h_user norm: (0.004215586464852095-6.585109519306742e-13j)
+2025-05-28 20:17:09,878 - DEBUG - h_attacker norm: (0.016703184694051743-9.249208170192258e-12j)
+2025-05-28 20:17:09,878 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:09,880 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-05-28 20:17:09,880 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:09,882 - DEBUG - Signal power user: 4.22309057057646e-07, attacker: 1.234730575561116e-07
+2025-05-28 20:17:09,883 - DEBUG - prob_detection: 0.7536978138190433, true_attacker_range: 48.57046127319336, isac_effort: 0.7
+2025-05-28 20:17:09,883 - DEBUG - Attacker detected: confidence=0.7716995702612433, detected_range=48.12078113329097, detected_az=-0.25738823518751985
+2025-05-28 20:17:09,883 - DEBUG - Returning state_array: [30.          0.17453294 -0.25738823 48.12078     0.77169955 48.57046
+ -0.31113583]
+2025-05-28 20:17:10,155 - DEBUG - Entering step with action_idx: 0
+2025-05-28 20:17:10,156 - DEBUG - Entering _get_state
+2025-05-28 20:17:10,156 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:10,336 - DEBUG - h_user norm: (0.0066520171239972115-1.921172639376967e-12j)
+2025-05-28 20:17:10,516 - DEBUG - h_attacker norm: (0.012599552981555462-1.925263984695058e-12j)
+2025-05-28 20:17:10,516 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:10,517 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:10,518 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:10,519 - DEBUG - Signal power user: 1.163610136245552e-06, attacker: 8.91614959641629e-08
+2025-05-28 20:17:10,520 - DEBUG - prob_detection: 0.7521093138014844, true_attacker_range: 48.78144454956055, isac_effort: 0.7
+2025-05-28 20:17:10,521 - DEBUG - Returning state_array: [30.          0.08726647 -3.1415927   0.          0.         48.781445
+ -0.30915174]
+2025-05-28 20:17:10,802 - DEBUG - Entering step with action_idx: 3
+2025-05-28 20:17:10,803 - DEBUG - Entering _get_state
+2025-05-28 20:17:10,803 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:10,987 - DEBUG - h_user norm: (7.547929726570146e-06+1.9887895261980768e-15j)
+2025-05-28 20:17:11,169 - DEBUG - h_attacker norm: (4.0449060179525986e-05+6.038574537457634e-15j)
+2025-05-28 20:17:11,169 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:11,171 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-05-28 20:17:11,171 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:11,173 - DEBUG - Signal power user: 3.4088931764181263e-12, attacker: 6.653381404847503e-12
+2025-05-28 20:17:11,174 - DEBUG - prob_detection: 0.9682498519765503, true_attacker_range: 48.65203857421875, isac_effort: 0.8999999999999999
+2025-05-28 20:17:11,174 - DEBUG - Attacker detected: confidence=1.0, detected_range=48.20163872757494, detected_az=-0.34280643134792466
+2025-05-28 20:17:11,174 - DEBUG - Returning state_array: [ 9.326135    0.08726647 -0.34280643 48.201637    1.         48.65204
+ -0.30100688]
+2025-05-28 20:17:11,442 - DEBUG - Entering step with action_idx: 0
+2025-05-28 20:17:11,443 - DEBUG - Entering _get_state
+2025-05-28 20:17:11,443 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:11,622 - DEBUG - h_user norm: (0.00476846843957901+2.96214940596895e-12j)
+2025-05-28 20:17:11,801 - DEBUG - h_attacker norm: (0.05466493219137192+7.412062500225525e-13j)
+2025-05-28 20:17:11,801 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:11,802 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 20:17:11,803 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:11,804 - DEBUG - Signal power user: 4.838327072320681e-07, attacker: 1.2700229490292259e-06
+2025-05-28 20:17:11,805 - DEBUG - prob_detection: 0.9649915883572162, true_attacker_range: 48.98911666870117, isac_effort: 0.8999999999999999
+2025-05-28 20:17:11,805 - DEBUG - Attacker detected: confidence=0.9075665392685871, detected_range=48.27490767473774, detected_az=-0.2924455578954199
+2025-05-28 20:17:11,806 - DEBUG - Returning state_array: [ 3.0000000e+01  1.2362518e-08 -2.9244557e-01  4.8274906e+01
+  9.0756655e-01  4.8989117e+01 -3.0112365e-01]
+2025-05-28 20:17:12,093 - DEBUG - Entering step with action_idx: 2
+2025-05-28 20:17:12,094 - DEBUG - Entering _get_state
+2025-05-28 20:17:12,094 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:12,274 - DEBUG - h_user norm: (0.01517422590404749-3.8528989027009075e-12j)
+2025-05-28 20:17:12,453 - DEBUG - h_attacker norm: (0.009549994952976704+8.279163487591445e-13j)
+2025-05-28 20:17:12,453 - DEBUG - Entering _get_steering_vector
+2025-05-28 20:17:12,455 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-05-28 20:17:12,455 - ERROR - Error in _get_steering_vector: name 'num_rows' is not defined
+2025-05-28 20:17:12,457 - DEBUG - Signal power user: 6.698643574054586e-06, attacker: 8.100651172071593e-08
+2025-05-28 20:17:12,457 - DEBUG - prob_detection: 0.9649159804824533, true_attacker_range: 48.996952056884766, isac_effort: 0.8999999999999999
+2025-05-28 20:17:12,457 - DEBUG - Attacker detected: confidence=0.9644314289829897, detected_range=49.71355183926447, detected_az=-0.3571569470437175
+2025-05-28 20:17:12,458 - DEBUG - Returning state_array: [ 3.0000000e+01  1.2362518e-08 -3.5715693e-01  4.9713551e+01
+  9.6443141e-01  4.8996952e+01 -2.9500389e-01]
+2025-05-28 20:17:12,732 - DEBUG - Entering step with action_idx: 2
+2025-05-28 20:17:12,733 - DEBUG - Entering _get_state
+2025-05-28 20:17:12,734 - DEBUG - Entering _get_channel_and_powers
+2025-05-28 20:17:12,913 - DEBUG - h_user norm: (0.013823253102600574-5.389733364474791e-12j)

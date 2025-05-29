@@ -16,7 +16,7 @@ start_time = time.time()
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 # Set up logging to file
-logging.basicConfig(filename='simulation_v3.log', level=logging.DEBUG,  # Changed log file name
+logging.basicConfig(filename='simulation_v5.log', level=logging.DEBUG,
                     format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Check TensorFlow and Sionna versions
@@ -173,7 +173,6 @@ class MmWaveISACEnv(gym.Env):
 
                 f_theta, f_phi = field_output
                 f_theta = tf.reduce_mean(tf.squeeze(f_theta))
-                # f_phi = tf.reduce_mean(tf.squeeze(f_phi)) # f_phi is not used later
                 logging.debug(f"f_theta: {f_theta.numpy()}, f_phi: {f_phi.numpy()}")
                 f_theta = tf.cast(f_theta, tf.complex64)
             except Exception as e:
@@ -405,10 +404,10 @@ class MmWaveISACEnv(gym.Env):
 
         if self._is_beam_stolen(next_state):
             terminated = True
-            reward -= 50 # Stronger penalty
+            reward -= 50
 
-        if next_state[0] < -10.0: # More aggressive SINR threshold
-            if not terminated: reward -= 15 # Penalty if not already terminated
+        if next_state[0] < -10.0:
+            if not terminated: reward -= 15
             terminated = True
         
         bs_pos_np = self.bs_position.numpy()[0,:2]
@@ -451,60 +450,58 @@ class MmWaveISACEnv(gym.Env):
         # --- SINR-based Reward ---
         base_reward_sinr = 0.0
         if sinr_user > 15.0:
-            base_reward_sinr = 20.0 + (sinr_user - 15.0) * 1.0 # Stronger base reward and scaling
+            base_reward_sinr = 20.0 + (sinr_user - 15.0) * 1.0
         elif sinr_user > 10.0:
-            base_reward_sinr = 10.0 + (sinr_user - 10.0) * 0.8 # Adjusted intermediate reward
-        elif sinr_user > 0.0: # More granular positive reward
-            base_reward_sinr = sinr_user * 1.0 # Increased scaling for positive SINR
+            base_reward_sinr = 10.0 + (sinr_user - 10.0) * 0.8
+        elif sinr_user > 0.0:
+            base_reward_sinr = sinr_user * 1.0
         else: # sinr_user <= 0
-            base_reward_sinr = sinr_user * 1.5 # Keep stronger penalty for negative SINR
+            base_reward_sinr = sinr_user * 1.5
 
         reward = base_reward_sinr
         # logging.debug(f"Step {self.current_step}, Initial SINR reward: {reward:.2f} for SINR: {sinr_user:.2f}")
 
         # --- Detection-based Reward/Penalty ---
         if detection_conf > 0.7 and detected_attacker_range_m > 0: # Confident detection
-            detection_bonus = 10.0 * detection_conf # Strong reward for confident detection
+            detection_bonus = 10.0 * detection_conf
             reward += detection_bonus
             # logging.debug(f"Step {self.current_step}, Detection bonus: {detection_bonus:.2f}, Reward now: {reward:.2f}")
 
-            # Penalty for beam misalignment with *USER* if attacker is detected
             user_vector = self.user_position.numpy()[0] - self.bs_position.numpy()[0]
             true_user_azimuth = np.arctan2(user_vector[1], user_vector[0])
             angle_diff_beam_user = abs(beam_az_rad - true_user_azimuth)
             angle_diff_beam_user = min(angle_diff_beam_user, 2 * np.pi - angle_diff_beam_user)
-            misalignment_penalty_user = (angle_diff_beam_user / np.pi) * 10.0 # Increased penalty
+            misalignment_penalty_user = (angle_diff_beam_user / np.pi) * 10.0
             reward -= misalignment_penalty_user
             # logging.debug(f"Step {self.current_step}, User misalignment penalty: {-misalignment_penalty_user:.2f}, Reward now: {reward:.2f}")
 
-            # Accuracy of detection (bonus for low DOA error)
             doa_error_rad = abs(detected_attacker_az_rad - true_attacker_azimuth)
             doa_error_rad = min(doa_error_rad, 2*np.pi - doa_error_rad)
-            accuracy_bonus = (1.0 - doa_error_rad / np.pi) * 5.0 * detection_conf # Keep this bonus
+            accuracy_bonus = (1.0 - doa_error_rad / np.pi) * 5.0 * detection_conf
             reward += accuracy_bonus
             # logging.debug(f"Step {self.current_step}, DOA accuracy bonus: {accuracy_bonus:.2f}, Reward now: {reward:.2f}")
 
-        elif true_attacker_range < self.sensing_range_max * 0.75 : # Attacker is present and relatively close but NOT detected confidently
-            missed_penalty = 15.0 # Strong penalty for missing a nearby attacker
+        elif true_attacker_range < self.sensing_range_max * 0.75 :
+            missed_penalty = 15.0
             reward -= missed_penalty
             # logging.debug(f"Step {self.current_step}, Missed nearby attacker penalty: {-missed_penalty:.2f}, Reward now: {reward:.2f}")
 
         # --- ISAC Effort Penalty/Management ---
-        if self.current_isac_effort > 0.9: # Penalize excessive effort
-            effort_penalty_high = (self.current_isac_effort - 0.9) * 15.0 # Stronger penalty
+        if self.current_isac_effort > 0.9:
+            effort_penalty_high = (self.current_isac_effort - 0.9) * 15.0
             reward -= effort_penalty_high
             # logging.debug(f"Step {self.current_step}, High ISAC effort penalty: {-effort_penalty_high:.2f}, Reward now: {reward:.2f}")
-        elif self.current_isac_effort < 0.4 and (true_attacker_range < self.sensing_range_max * 0.75 and detection_conf < 0.5) : # Low effort when nearby attacker is missed
-            effort_penalty_low_missed = 7.5 # Stronger penalty
+        elif self.current_isac_effort < 0.4 and (true_attacker_range < self.sensing_range_max * 0.75 and detection_conf < 0.5) :
+            effort_penalty_low_missed = 7.5
             reward -= effort_penalty_low_missed
             # logging.debug(f"Step {self.current_step}, Low ISAC effort on missed attacker penalty: {-effort_penalty_low_missed:.2f}, Reward now: {reward:.2f}")
 
         # --- Penalty for beam pointing towards actual attacker if attacker is close ---
-        if true_attacker_range < self.sensing_range_max * 0.6: # If attacker is close
+        if true_attacker_range < self.sensing_range_max * 0.6:
             angle_diff_beam_true_attacker = abs(beam_az_rad - true_attacker_azimuth)
             angle_diff_beam_true_attacker = min(angle_diff_beam_true_attacker, 2 * np.pi - angle_diff_beam_true_attacker)
-            if angle_diff_beam_true_attacker < np.deg2rad(25): # If beam is somewhat towards the true attacker
-                 penalty_beam_on_attacker = (1.0 - angle_diff_beam_true_attacker / np.pi) * 7.5 * (1.2 - detection_conf) # Penalize more if not detected
+            if angle_diff_beam_true_attacker < np.deg2rad(25):
+                 penalty_beam_on_attacker = (1.0 - angle_diff_beam_true_attacker / np.pi) * 7.5 * (1.2 - detection_conf)
                  reward -= penalty_beam_on_attacker
                  # logging.debug(f"Step {self.current_step}, Beam on true attacker penalty: {-penalty_beam_on_attacker:.2f}, Reward now: {reward:.2f}")
         # logging.debug(f"Step {self.current_step}, Final reward for this step: {reward:.2f}")
@@ -516,12 +513,11 @@ class MmWaveISACEnv(gym.Env):
             current_render_state = self._get_state()
             print(f"Beam Azimuth: {np.rad2deg(current_render_state[1]):.1f}°")
             print(f"User SINR: {current_render_state[0]:.2f} dB")
-            if current_render_state[4] > 0.1: # detection_confidence
+            if current_render_state[4] > 0.1:
                 print(f"Detected Attacker: Az={np.rad2deg(current_render_state[2]):.1f}°, "
                       f"Range={current_render_state[3]:.1f}m (Conf: {current_render_state[4]:.2f})")
             else:
                 print("Attacker Not Detected or Low Confidence.")
-            # Always print true attacker info for debugging/comparison
             print(f"True Attacker: Az={np.rad2deg(current_render_state[6]):.1f}°, Range={current_render_state[5]:.1f}m")
 
     def close(self):
@@ -530,17 +526,19 @@ class MmWaveISACEnv(gym.Env):
 # DRL Agent (Double DQN)
 class DoubleDQNAgent:
     def __init__(self, state_dim, action_n, learning_rate=0.0001, gamma=0.99,
-             epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_steps=10000): # Epsilon decay steps reduced
+             epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # Renamed for clarity
         self.state_dim = int(state_dim)
         self.action_n = action_n
         self.memory = deque(maxlen=50000)
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end
-        self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps
-        self.current_learning_steps = 0
+        # Epsilon decay is now per environment step
+        self.epsilon_decay_val = (epsilon_start - epsilon_end) / epsilon_decay_env_steps
+        self.env_steps_count = 0 # Counter for environment steps for epsilon decay
+
         self.learning_rate = learning_rate
-        self.batch_size = 64 # Increased batch size
+        self.batch_size = 64
 
         self.model = self._build_model()
         self.target_model = self._build_model()
@@ -549,8 +547,8 @@ class DoubleDQNAgent:
     def _build_model(self):
         model = keras.Sequential([
             keras.layers.Input(shape=(self.state_dim,)),
-            keras.layers.Dense(128, activation='relu'), # Kept increased units
-            keras.layers.Dense(64, activation='relu'),  # Kept increased units
+            keras.layers.Dense(128, activation='relu'),
+            keras.layers.Dense(64, activation='relu'),
             keras.layers.Dense(self.action_n, activation='linear')
         ])
         model.compile(loss=tf.keras.losses.Huber(),
@@ -564,13 +562,22 @@ class DoubleDQNAgent:
         self.memory.append((state, action_idx, reward, next_state, done))
 
     def act(self, state):
-        self.current_learning_steps += 1
+        self.env_steps_count += 1 # Increment environment step counter
+        action = 0 # Default action
         if np.random.rand() <= self.epsilon:
-            return random.randrange(self.action_n)
-        if state.ndim == 1: state_for_pred = np.expand_dims(state, axis=0)
-        else: state_for_pred = state
-        act_values = self.model.predict(state_for_pred, verbose=0)
-        return np.argmax(act_values[0])
+            action = random.randrange(self.action_n)
+        else:
+            if state.ndim == 1: state_for_pred = np.expand_dims(state, axis=0)
+            else: state_for_pred = state
+            act_values = self.model.predict(state_for_pred, verbose=0)
+            action = np.argmax(act_values[0])
+
+        # Decay epsilon based on environment steps
+        if self.epsilon > self.epsilon_end:
+            self.epsilon -= self.epsilon_decay_val
+            if self.epsilon < self.epsilon_end:
+                self.epsilon = self.epsilon_end
+        return action
 
     def replay(self):
         if len(self.memory) < self.batch_size:
@@ -596,11 +603,7 @@ class DoubleDQNAgent:
             current_q_values_all_actions[i, actions[i]] = targets_for_taken_actions[i]
 
         history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0, batch_size=self.batch_size)
-
-        if self.epsilon > self.epsilon_end:
-            self.epsilon -= self.epsilon_decay
-            self.epsilon = max(self.epsilon_end, self.epsilon)
-
+        # Epsilon decay moved to act() method
         return history.history['loss'][0]
 
     def save(self, name):
@@ -616,40 +619,52 @@ def run_simulation():
     env = MmWaveISACEnv()
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
+
+    episodes = 1500 # Increased episodes
+    # Calculate epsilon_decay_env_steps for epsilon to reach ~epsilon_end in about 2/3 of total env steps
+    total_expected_env_steps = episodes * env.max_steps_per_episode
+    epsilon_decay_env_steps_val = int(total_expected_env_steps * 0.66) # Decay over ~2/3 of training
+    # Ensure it's at least a reasonable number of steps, e.g., if episodes is very small
+    epsilon_decay_env_steps_val = max(epsilon_decay_env_steps_val, 10000)
+
+
     agent = DoubleDQNAgent(state_dim, action_n,
-                           learning_rate=0.0001, # Kept from previous successful run
+                           learning_rate=0.0001,
                            gamma=0.99,
                            epsilon_end=0.05,
-                           epsilon_decay_steps=10000) # Reduced decay steps
+                           epsilon_decay_env_steps=epsilon_decay_env_steps_val)
+    logging.info(f"Agent initialized with epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
 
-    episodes = 1000 # Increased episodes
+
     target_update_freq_steps = 1000
     print_freq_episodes = 10
-    save_freq_episodes = 100 # Save less frequently for longer runs
+    save_freq_episodes = 100
     episode_data = []
-    attack_detections_in_episode = []
-    total_training_steps = 0
+    attack_detections_in_episode = [] # Stores 0 or 1 for each step across all episodes for overall rate
+    total_training_updates = 0 # Renamed from total_training_steps for clarity
 
     early_stop_avg_sinr_threshold = 15.0
-    early_stop_detection_rate_threshold = 85.0 # Slightly higher target for detection
-    early_stop_consecutive_blocks = 5 # Test with fewer blocks for earlier stop if good
+    early_stop_detection_rate_threshold = 90.0
+    early_stop_consecutive_blocks = 10
     consecutive_good_blocks_count = 0
 
     for e in range(episodes):
         current_state, _ = env.reset()
         total_episode_reward = 0
         episode_sinr_values = []
-        episode_detections = []
+        episode_detections_binary = [] # For this episode's detection outcomes (0 or 1)
 
         for step in range(env.max_steps_per_episode):
-            action_idx = agent.act(current_state)
+            action_idx = agent.act(current_state) # Epsilon decay happens here now
             next_state, reward, terminated, truncated, info = env.step(action_idx)
 
             episode_sinr_values.append(next_state[0])
             detection_confidence = next_state[4]
             detected_range = next_state[3]
             attack_detected_this_step = 1 if (detection_confidence > 0.5 and 0 < detected_range < 100) else 0
-            episode_detections.append(attack_detected_this_step)
+            episode_detections_binary.append(attack_detected_this_step)
+            attack_detections_in_episode.append(attack_detected_this_step) # For overall calculation if needed
+
 
             agent.remember(current_state, action_idx, reward, next_state, terminated or truncated)
             current_state = next_state
@@ -657,21 +672,19 @@ def run_simulation():
 
             if len(agent.memory) >= agent.batch_size:
                 loss = agent.replay()
-                total_training_steps += 1
-                if total_training_steps % 200 == 0: # Log loss less frequently
-                    logging.debug(f"Episode {e+1}, Step {step+1}, Training Step {total_training_steps}, Loss: {loss:.4f}, Epsilon: {agent.epsilon:.4f}")
+                total_training_updates += 1 # This counts calls to replay()
+                if total_training_updates % 200 == 0:
+                    logging.debug(f"Episode {e+1}, EnvStep {agent.env_steps_count}, TrainUpdate {total_training_updates}, Loss: {loss:.4f}, Epsilon: {agent.epsilon:.4f}")
 
-            if total_training_steps > 0 and total_training_steps % target_update_freq_steps == 0:
+            if total_training_updates > 0 and total_training_updates % target_update_freq_steps == 0:
                 agent.update_target_model()
-                logging.info(f"Target model updated at training step {total_training_steps}")
+                logging.info(f"Target model updated at training update {total_training_updates}")
 
             if terminated or truncated:
                 break
         
-        attack_detections_in_episode.extend(episode_detections)
-
         avg_episode_sinr = np.mean(episode_sinr_values) if episode_sinr_values else -30.0
-        avg_episode_detection_rate = np.mean(episode_detections) * 100 if episode_detections else 0.0
+        avg_episode_detection_rate = np.mean(episode_detections_binary) * 100 if episode_detections_binary else 0.0
 
         episode_data.append({
             'Episode': e + 1,
@@ -702,26 +715,26 @@ def run_simulation():
                 consecutive_good_blocks_count = 0
 
         if (e + 1) % save_freq_episodes == 0:
-            agent.save(f"drl_isac_secure_beam_v3_ep{e+1}.weights.h5")
+            agent.save(f"drl_isac_secure_beam_v5_ep{e+1}.weights.h5")
 
     df = pd.DataFrame(episode_data)
     print(f"Total training time: {(time.time() - start_time)/60:.2f} minutes")
-    df.to_csv('episode_results_v3.csv', index=False)
-    print("Episode results saved to 'episode_results_v3.csv'")
+    df.to_csv('episode_results_v5.csv', index=False)
+    print("Episode results saved to 'episode_results_v5.csv'")
 
     print("\n--- Starting Evaluation Phase ---")
-    evaluation_episodes = 8
+    evaluation_episodes = 50
     evaluation_steps = env.max_steps_per_episode
 
     eval_epsilon_backup = agent.epsilon
-    agent.epsilon = 0.0 # Greedy evaluation
+    agent.epsilon = 0.0
     print(f"Agent epsilon set to {agent.epsilon} for evaluation.")
 
     evaluation_data = []
     for i_eval in range(evaluation_episodes):
         state_b, _ = env.reset()
-        env.current_beam_angles_tf.assign([0.0]) # Fixed beam for baseline
-        env.current_isac_effort = 0.7 # Fixed ISAC for baseline
+        env.current_beam_angles_tf.assign([0.0])
+        env.current_isac_effort = 0.7
         baseline_current_state = env._get_state()
         baseline_sinr = baseline_current_state[0]
         baseline_detected_conf = baseline_current_state[4]
@@ -762,8 +775,8 @@ def run_simulation():
     print(f"Agent epsilon restored to {agent.epsilon:.3f}.")
 
     df_eval = pd.DataFrame(evaluation_data)
-    df_eval.to_csv('evaluation_results_v3.csv', index=False)
-    print("Evaluation results saved to 'evaluation_results_v3.csv'")
+    df_eval.to_csv('evaluation_results_v5.csv', index=False)
+    print("Evaluation results saved to 'evaluation_results_v5.csv'")
 
     avg_baseline_sinr_overall = np.mean([d['Baseline_SINR'] for d in evaluation_data])
     avg_drl_sinr_overall = np.mean([d['DRL_SINR_Avg_Eval'] for d in evaluation_data])
@@ -811,8 +824,8 @@ def run_simulation():
         plt.grid(True)
 
         plt.tight_layout()
-        plt.savefig('training_progress_v3.png')
-        print("Saved training_progress_v3.png")
+        plt.savefig('training_progress_v5.png')
+        print("Saved training_progress_v5.png")
     except ImportError:
         print("Matplotlib not found. Skipping plot generation.")
     except Exception as e:

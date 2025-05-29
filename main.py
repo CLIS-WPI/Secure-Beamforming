@@ -180,12 +180,13 @@ class MmWaveISACEnv(gym.Env):
                 logging.warning(f"Field computation failed: {e}. Using default gain.")
                 f_theta = tf.constant(1.0, dtype=tf.complex64)
 
-            num_elements = tf.cast(self.num_bs_physical_rows, dtype=tf.float32)
-            num_cols = tf.cast(self.num_bs_physical_cols, dtype=tf.float32)
+            num_elements_float = tf.cast(self.num_bs_physical_rows, dtype=tf.float32) # Renamed for clarity, or just use self.num_bs_physical_rows directly
+            num_cols_float = tf.cast(self.num_bs_physical_cols, dtype=tf.float32) # Renamed for clarity
 
-            row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - (num_rows - 1.0) / 2.0
-            col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - (num_cols - 1.0) / 2.0
-
+            # Corrected line using self.num_bs_physical_rows
+            row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - (tf.cast(self.num_bs_physical_rows, dtype=tf.float32) - 1.0) / 2.0
+            col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - (num_cols_float - 1.0) / 2.0 # Using num_cols_float for consistency
+            
             d_v = d_h = 0.5
             wavelength = 3e8 / self.carrier_frequency
             k = 2 * np.pi / wavelength
@@ -209,9 +210,12 @@ class MmWaveISACEnv(gym.Env):
             array_response = tf.exp(tf.complex(0.0, phase_shifts))
 
             sv = array_response * f_theta
-            if sv.shape[0] != num_elements:
-                logging.error(f"sv has {sv.shape[0]} elements, expected {num_elements}")
-                sv = tf.ones([num_elements], dtype=tf.complex64)
+            # self.num_bs_antennas is the correct total number of antenna elements.
+            # This check ensures sv has the expected number of elements before the final ensure_shape.
+            if sv.shape[0] != self.num_bs_antennas:
+                logging.error(f"Steering vector calculation resulted in {sv.shape[0]} elements, expected {self.num_bs_antennas}. Falling back to tf.ones.")
+                sv = tf.ones([self.num_bs_antennas], dtype=tf.complex64)
+            # The tf.ensure_shape later will still enforce the final shape.
 
             sv = tf.cast(sv, tf.complex64)
             sv = tf.ensure_shape(sv, [self.num_bs_antennas])
@@ -424,33 +428,37 @@ class MmWaveISACEnv(gym.Env):
 
     def _compute_reward(self, current_obs_state):
         sinr_user = current_obs_state[0]
-        beam_az_rad = current_obs_state[1]
-        detected_attacker_rad = current_obs_state[2]
+        beam_az_rad = current_obs_state[1]       # This is the current beam azimuth
+        detected_attacker_rad = current_obs_state[2] # This is detected_attacker_azimuth
         detected_attacker_range_m = current_obs_state[3]
         detection_conf = current_obs_state[4]
 
-        reward = np.clip(sinr_user / 2.0, -6.0, 6.0)  # افزایش حساسیت
-        if sinr_user > 16: reward += 10.0  # پاداش قوی
+        reward = np.clip(sinr_user / 2.0, -6.0, 6.0)
+        if sinr_user > 16: reward += 10.0
         elif sinr_user > 12: reward += 5.0
         elif sinr_user > 8.0: reward += 2.0
-        if detection_conf > 0.6 and self.current_step % 5 == 0:  # سخت‌تر
+        if detection_conf > 0.6 and self.current_step % 5 == 0:
             reward += 1.5
 
         if detection_conf > 0.3 and detected_attacker_range_m > 0:
-            true_attacker_rad = current_obs_state[6]
+            true_attacker_rad = current_obs_state[6] # This is true_attacker_azimuth
             doa_error_rad = abs(detected_attacker_rad - true_attacker_rad)
-            doa_error_rad = min(doa_error_rad, 2*np.pi - doa_error_rad)
+            doa_error_rad = min(doa_error_rad, 2*np.pi - doa_error_rad) # Normalize angle
             reward += (1.0 - doa_error_rad / np.pi) * 2.0 * detection_conf
-            angle_diff_beam = abs(beam_rad - detected_attacker_rad)
-            angle_diff_beam = min(angle_diff_beam_rad, 2*np.pi - angle_diff_rad)
-            reward -= (1.0 - angle_diff_beam_rad / np.pi) * 1.5 * detection_conf
-        else:
-            true_attacker_m = current_obs_state[5]
-            if true_attacker_m < self.sensing_range_m * 0.5:
-                reward -= 0.15  # جریمه کمتر
 
-        if self.current_is > 0.85: reward -= 0.15
-        elif self.current_is < 0.35: reward -= 0.1
+            # Corrected lines for angle_diff_beam:
+            angle_diff_beam = abs(beam_az_rad - detected_attacker_rad) # Use beam_az_rad
+            angle_diff_beam = min(angle_diff_beam, 2*np.pi - angle_diff_beam) # Normalize angle, use angle_diff_beam
+            reward -= (1.0 - angle_diff_beam / np.pi) * 1.5 * detection_conf # Use angle_diff_beam
+        else:
+            true_attacker_m = current_obs_state[5] # This is true_attacker_range
+            # Corrected line for sensing_range_m:
+            if true_attacker_m < self.sensing_range_max * 0.5: # Use self.sensing_range_max
+                reward -= 0.15
+
+        # Corrected lines for current_is:
+        if self.current_isac_effort > 0.85: reward -= 0.15 # Use self.current_isac_effort
+        elif self.current_isac_effort < 0.35: reward -= 0.1 # Use self.current_isac_effort
         return float(reward)
 
     def render(self, mode='human'):
@@ -481,7 +489,7 @@ class DoubleDQNAgent:
         self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps
         self.current_learning_steps = 0
         self.learning_rate = learning_rate
-        self.batch_size = 24
+        self.batch_size = 128
 
         self.model = self._build_model()
         self.target_model = self._build_model()
@@ -538,7 +546,7 @@ class DoubleDQNAgent:
         history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0)
 
         if self.epsilon > self.epsilon_end:
-            self.epsilon -= self.epsilon_decay_value
+            self.epsilon -= self.epsilon_decay # <<< CORRECTED
             self.epsilon = max(self.epsilon_end, self.epsilon)
 
         return history.history['loss'][0]

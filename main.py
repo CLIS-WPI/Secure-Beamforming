@@ -1,54 +1,85 @@
-import numpy as np
-import tensorflow as tf
-import gym
-from gym import spaces
-import tensorflow.keras as keras
-from collections import deque
-import random
-import sys
-import pandas as pd
-import logging
+# =====================================================================
+# FINAL DEFINITIVE TOP BLOCK - REPLACE ALL EXISTING IMPORTS WITH THIS
+# =====================================================================
 import os
-import time
+import sys # Moved to top
+import time # Moved to top for the NameError
+import random # Moved to top
+import logging # Moved to top
 
-start_time = time.time()
-# Force disable oneDNN optimizations
+# --- Environment Variable Setup (VERY FIRST THING) ---
+# Reduce TensorFlow log spam
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+# Force disable oneDNN optimizations (as in your original code)
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# Set up logging to file
-logging.basicConfig(filename='simulation_v5.log', level=logging.DEBUG,
-                    format='%(asctime)s - %(levelname)s - %(message)s')
+# --- TensorFlow Core and GPU Initialization (SECOND THING) ---
+import tensorflow as tf
+import tensorflow.keras # Explicitly import Keras submodule from TF
 
-# Check TensorFlow and Sionna versions
-def check_tf_sionna_versions():
-    logging.info(f"Using TensorFlow version: {tf.__version__}")
-    tf_major_minor = float('.'.join(tf.__version__.split('.')[:2]))
-    if not (tf_major_minor >= 2.14):
-        logging.warning(f"TensorFlow version {tf.__version__} might be older than expected for latest Sionna features.")
-    try:
-        import sionna
-        logging.info(f"Using Sionna version: {sionna.__version__}")
-    except ImportError:
-        pass
-
-check_tf_sionna_versions()
-
-# Sionna Imports with Error Handling
+print("--- Main Script: Initializing GPU for TensorFlow ---")
 try:
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        for gpu_device in gpus: # Iterate over all found GPUs
+            tf.config.experimental.set_memory_growth(gpu_device, True)
+        print(f"Found and configured {len(gpus)} GPU(s). Memory growth enabled.")
+    else:
+        print("No GPU found by TensorFlow. Sionna might not work as expected.")
+except Exception as e:
+    print(f"Error during GPU initialization in main script: {e}")
+print("--- Main Script: GPU Initialization Complete ---")
+
+# --- Other Core Libraries (THIRD THING) ---
+import numpy as np
+import pandas as pd
+from collections import deque # Moved to top
+
+# --- Gym Environment Library (FOURTH THING) ---
+import gym
+from gym import spaces
+
+# --- Sionna Library (FIFTH THING, AFTER TF/GPU IS FULLY SET) ---
+try:
+    import sionna
     from sionna.phy.channel.tr38901 import UMa
     from sionna.phy.channel.tr38901.antenna import PanelArray
     from sionna.phy.utils import log10
-except ImportError as e:
-    logging.error(f"Failed to import Sionna components: {e}")
-    print(f"CRITICAL ERROR: Failed to import Sionna components: {e}")
-    print("Please ensure Sionna is installed correctly.")
+    print("Sionna imported successfully.")
+except ImportError as e_sionna:
+    print(f"CRITICAL ERROR: Failed to import Sionna components: {e_sionna}")
+    logging.error(f"CRITICAL ERROR: Failed to import Sionna components: {e_sionna}") # Log it too
     sys.exit(1)
-except Exception as e:
-    logging.error(f"Unexpected error during Sionna imports: {e}")
-    print(f"An unexpected error occurred during Sionna imports: {e}")
+except Exception as e_sionna_other:
+    print(f"CRITICAL ERROR: Unexpected error during Sionna imports: {e_sionna_other}")
+    logging.error(f"CRITICAL ERROR: Unexpected error during Sionna imports: {e_sionna_other}") # Log it too
     sys.exit(1)
+# =====================================================================
+# END OF FINAL DEFINITIVE TOP BLOCK
+# =====================================================================
 
-# Set random seed for reproducibility
+
+# --- Your Script's Execution Logic Starts Here ---
+start_time = time.time()
+
+# Set up logging to file (ensure logging is configured after the import)
+logging.basicConfig(filename='simulation_v5.log', level=logging.DEBUG,
+                    format='%(asctime)s - %(levelname)s - %(message)s')
+
+# Check versions (ensure this function is defined or called after imports)
+def check_tf_sionna_versions():
+    """Logs the versions of key libraries."""
+    if 'sionna' in sys.modules: # Check if sionna was successfully imported
+        logging.info(f"Using Sionna version: {sionna.__version__}")
+    logging.info(f"Using TensorFlow version: {tf.__version__}")
+    tf_major_minor = float('.'.join(tf.__version__.split('.')[:2]))
+    # Adjusting TF version check based on container (TF 2.17.0)
+    if not (2.14 <= tf_major_minor <= 2.19):
+        logging.warning(f"TensorFlow version {tf.__version__} is outside the typical 2.14-2.19 range, but using container's version.")
+
+check_tf_sionna_versions()
+
+# Set random seeds
 np.random.seed(42)
 tf.random.set_seed(42)
 random.seed(42)
@@ -524,18 +555,23 @@ class MmWaveISACEnv(gym.Env):
         pass
 
 # DRL Agent (Double DQN)
+# DRL Agent (Double DQN)
 class DoubleDQNAgent:
     def __init__(self, state_dim, action_n, learning_rate=0.0001, gamma=0.99,
-             epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # Renamed for clarity
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # MODIFIED: Parameter name and default
         self.state_dim = int(state_dim)
         self.action_n = action_n
         self.memory = deque(maxlen=50000)
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end
-        # Epsilon decay is now per environment step
-        self.epsilon_decay_val = (epsilon_start - epsilon_end) / epsilon_decay_env_steps
-        self.env_steps_count = 0 # Counter for environment steps for epsilon decay
+        # MODIFIED: Epsilon decay calculation and new counter
+        if epsilon_decay_env_steps > 0:
+            self.epsilon_decay_val = (epsilon_start - epsilon_end) / epsilon_decay_env_steps
+        else:
+            self.epsilon_decay_val = 0 # Avoid division by zero if steps is 0
+        self.env_steps_count = 0 
+        # self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps # REMOVED
 
         self.learning_rate = learning_rate
         self.batch_size = 64
@@ -544,15 +580,16 @@ class DoubleDQNAgent:
         self.target_model = self._build_model()
         self.update_target_model()
 
+    # Inside the DoubleDQNAgent class
     def _build_model(self):
-        model = keras.Sequential([
-            keras.layers.Input(shape=(self.state_dim,)),
-            keras.layers.Dense(128, activation='relu'),
-            keras.layers.Dense(64, activation='relu'),
-            keras.layers.Dense(self.action_n, activation='linear')
+        model = tf.keras.Sequential([  # Change here
+            tf.keras.layers.Input(shape=(self.state_dim,)), # Change here
+            tf.keras.layers.Dense(128, activation='relu'),    # Change here
+            tf.keras.layers.Dense(64, activation='relu'),     # Change here
+            tf.keras.layers.Dense(self.action_n, activation='linear') # Change here
         ])
-        model.compile(loss=tf.keras.losses.Huber(),
-                    optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
+        model.compile(loss=tf.keras.losses.Huber(), # Change here
+                      optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate)) # Change here
         return model
 
     def update_target_model(self):
@@ -562,8 +599,8 @@ class DoubleDQNAgent:
         self.memory.append((state, action_idx, reward, next_state, done))
 
     def act(self, state):
-        self.env_steps_count += 1 # Increment environment step counter
-        action = 0 # Default action
+        self.env_steps_count += 1 # MODIFIED: Increment environment step counter
+        action = 0 
         if np.random.rand() <= self.epsilon:
             action = random.randrange(self.action_n)
         else:
@@ -572,10 +609,10 @@ class DoubleDQNAgent:
             act_values = self.model.predict(state_for_pred, verbose=0)
             action = np.argmax(act_values[0])
 
-        # Decay epsilon based on environment steps
+        # MODIFIED: Decay epsilon based on environment steps
         if self.epsilon > self.epsilon_end:
             self.epsilon -= self.epsilon_decay_val
-            if self.epsilon < self.epsilon_end:
+            if self.epsilon < self.epsilon_end: # Ensure it doesn't go below min
                 self.epsilon = self.epsilon_end
         return action
 
@@ -603,7 +640,12 @@ class DoubleDQNAgent:
             current_q_values_all_actions[i, actions[i]] = targets_for_taken_actions[i]
 
         history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0, batch_size=self.batch_size)
-        # Epsilon decay moved to act() method
+        
+        # MODIFIED: Epsilon decay logic REMOVED from here
+        # if self.epsilon > self.epsilon_end:
+        #     self.epsilon -= self.epsilon_decay 
+        #     self.epsilon = max(self.epsilon_end, self.epsilon)
+
         return history.history['loss'][0]
 
     def save(self, name):
@@ -620,42 +662,50 @@ def run_simulation():
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
 
-    episodes = 1500 # Increased episodes
-    # Calculate epsilon_decay_env_steps for epsilon to reach ~epsilon_end in about 2/3 of total env steps
+    episodes = 1500 
     total_expected_env_steps = episodes * env.max_steps_per_episode
-    epsilon_decay_env_steps_val = int(total_expected_env_steps * 0.66) # Decay over ~2/3 of training
-    # Ensure it's at least a reasonable number of steps, e.g., if episodes is very small
-    epsilon_decay_env_steps_val = max(epsilon_decay_env_steps_val, 10000)
-
+    # MODIFIED: Calculation of epsilon_decay_env_steps_val
+    # Epsilon will decay over approximately 2/3 of total environment steps
+    epsilon_decay_env_steps_val = int(total_expected_env_steps * (2/3)) 
+    # Ensure it's at least a significant number of steps, e.g., 25000, or a large fraction of total steps
+    epsilon_decay_env_steps_val = max(epsilon_decay_env_steps_val, 25000) 
+    # For 1500 episodes * 50 steps/ep = 75000 total steps. 75000 * (2/3) = 50000.
+    # So epsilon_decay_env_steps_val will be 50000 with current settings.
 
     agent = DoubleDQNAgent(state_dim, action_n,
                            learning_rate=0.0001,
                            gamma=0.99,
                            epsilon_end=0.05,
-                           epsilon_decay_env_steps=epsilon_decay_env_steps_val)
+                           epsilon_decay_env_steps=epsilon_decay_env_steps_val) # MODIFIED: Parameter name passed
     logging.info(f"Agent initialized with epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
 
+    # ... (بقیه تابع run_simulation بدون تغییر باقی می‌ماند) ...
+    # ... (The rest of the run_simulation function remains unchanged) ...
+
+    # Make sure the part saving step_level_data_list and evaluation_episodes=50 is there
+    # from the previous full code I provided (simulation_v5)
 
     target_update_freq_steps = 1000
     print_freq_episodes = 10
-    save_freq_episodes = 100
+    save_freq_episodes = 100 
+    
     episode_data = []
-    attack_detections_in_episode = [] # Stores 0 or 1 for each step across all episodes for overall rate
-    total_training_updates = 0 # Renamed from total_training_steps for clarity
+    step_level_data_list = [] 
+    total_training_updates = 0 
 
     early_stop_avg_sinr_threshold = 15.0
-    early_stop_detection_rate_threshold = 90.0
-    early_stop_consecutive_blocks = 10
+    early_stop_detection_rate_threshold = 90.0 
+    early_stop_consecutive_blocks = 10 
     consecutive_good_blocks_count = 0
 
     for e in range(episodes):
         current_state, _ = env.reset()
         total_episode_reward = 0
         episode_sinr_values = []
-        episode_detections_binary = [] # For this episode's detection outcomes (0 or 1)
+        episode_detections_binary = [] 
 
         for step in range(env.max_steps_per_episode):
-            action_idx = agent.act(current_state) # Epsilon decay happens here now
+            action_idx = agent.act(current_state) 
             next_state, reward, terminated, truncated, info = env.step(action_idx)
 
             episode_sinr_values.append(next_state[0])
@@ -663,8 +713,18 @@ def run_simulation():
             detected_range = next_state[3]
             attack_detected_this_step = 1 if (detection_confidence > 0.5 and 0 < detected_range < 100) else 0
             episode_detections_binary.append(attack_detected_this_step)
-            attack_detections_in_episode.append(attack_detected_this_step) # For overall calculation if needed
-
+            
+            true_attacker_range_current_step = next_state[5] 
+            step_level_data_list.append({
+                'Episode': e + 1,
+                'Step': step + 1,
+                'True_Attacker_Range': true_attacker_range_current_step,
+                'Detection_Outcome': attack_detected_this_step,
+                'Detection_Confidence': detection_confidence,
+                'ISAC_Effort': env.current_isac_effort,
+                'User_SINR': next_state[0],
+                'Current_Epsilon': agent.epsilon 
+            })
 
             agent.remember(current_state, action_idx, reward, next_state, terminated or truncated)
             current_state = next_state
@@ -672,9 +732,11 @@ def run_simulation():
 
             if len(agent.memory) >= agent.batch_size:
                 loss = agent.replay()
-                total_training_updates += 1 # This counts calls to replay()
-                if total_training_updates % 200 == 0:
+                total_training_updates += 1
+                if total_training_updates > 0 and total_training_updates % 200 == 0: # Log less frequently
+                    # Log env_steps_count to see how many times act() was called
                     logging.debug(f"Episode {e+1}, EnvStep {agent.env_steps_count}, TrainUpdate {total_training_updates}, Loss: {loss:.4f}, Epsilon: {agent.epsilon:.4f}")
+
 
             if total_training_updates > 0 and total_training_updates % target_update_freq_steps == 0:
                 agent.update_target_model()
@@ -692,7 +754,7 @@ def run_simulation():
             'Avg_SINR': avg_episode_sinr,
             'Avg_Detection_Rate_Episode': avg_episode_detection_rate,
             'Steps': step + 1,
-            'Epsilon': agent.epsilon
+            'Epsilon_End_Episode': agent.epsilon # Epsilon at the end of episode
         })
 
         if (e + 1) % print_freq_episodes == 0:
@@ -717,13 +779,17 @@ def run_simulation():
         if (e + 1) % save_freq_episodes == 0:
             agent.save(f"drl_isac_secure_beam_v5_ep{e+1}.weights.h5")
 
-    df = pd.DataFrame(episode_data)
+    df_episode_data = pd.DataFrame(episode_data)
     print(f"Total training time: {(time.time() - start_time)/60:.2f} minutes")
-    df.to_csv('episode_results_v5.csv', index=False)
+    df_episode_data.to_csv('episode_results_v5.csv', index=False)
     print("Episode results saved to 'episode_results_v5.csv'")
 
+    df_step_level = pd.DataFrame(step_level_data_list)
+    df_step_level.to_csv('step_level_detection_data_v5.csv', index=False)
+    print("Step-level detection data saved to 'step_level_detection_data_v5.csv'")
+
     print("\n--- Starting Evaluation Phase ---")
-    evaluation_episodes = 50
+    evaluation_episodes = 50 
     evaluation_steps = env.max_steps_per_episode
 
     eval_epsilon_backup = agent.epsilon
@@ -732,16 +798,32 @@ def run_simulation():
 
     evaluation_data = []
     for i_eval in range(evaluation_episodes):
-        state_b, _ = env.reset()
-        env.current_beam_angles_tf.assign([0.0])
-        env.current_isac_effort = 0.7
-        baseline_current_state = env._get_state()
-        baseline_sinr = baseline_current_state[0]
-        baseline_detected_conf = baseline_current_state[4]
-        baseline_detected_range = baseline_current_state[3]
-        baseline_detected = 1 if (baseline_detected_conf > 0.5 and 0 < baseline_detected_range < 100) else 0
+        # Baseline Evaluation (simplified: reset and take state)
+        state_b, _ = env.reset() 
+        env.current_beam_angles_tf.assign([0.0]) 
+        env.current_isac_effort = 0.7 
+        
+        baseline_sinrs_scenario = []
+        baseline_detections_scenario = []
+        # For a slightly more robust baseline, let's average over a few resets or steps if env was dynamic
+        # Since user/attacker positions are randomized on reset, multiple resets give different baseline scenarios
+        for _i_b_step in range(evaluation_steps): # Simulate some steps for baseline by just getting varied initial states
+            if _i_b_step > 0 : # For steps after the first, reset again to get new positions
+                 _, _ = env.reset()
+                 env.current_beam_angles_tf.assign([0.0])
+                 env.current_isac_effort = 0.7
+            baseline_current_state_snapshot = env._get_state()
+            baseline_sinrs_scenario.append(baseline_current_state_snapshot[0])
+            b_conf = baseline_current_state_snapshot[4]
+            b_range = baseline_current_state_snapshot[3]
+            baseline_detections_scenario.append(1 if (b_conf > 0.5 and 0 < b_range < 100) else 0)
 
-        state_drl, _ = env.reset()
+        baseline_sinr = np.mean(baseline_sinrs_scenario) if baseline_sinrs_scenario else -30.0
+        baseline_detected = 1 if np.any(baseline_detections_scenario) else 0
+
+
+        # DRL Agent Evaluation
+        state_drl, _ = env.reset() 
         drl_sinrs_episode = []
         drl_detections_episode_conf = []
         drl_detected_attacker_ranges_episode = []
@@ -769,7 +851,8 @@ def run_simulation():
             'Baseline_Detected_Binary': baseline_detected,
             'DRL_Detected_In_Episode_Binary': drl_detected_in_eval_episode
         })
-        print(f"Eval Scenario {i_eval+1}: Baseline SINR={baseline_sinr:.2f}, DRL SINR={avg_drl_sinr_eval:.2f}, Baseline Det={baseline_detected}, DRL Det={drl_detected_in_eval_episode}")
+        if (i_eval + 1) % 10 == 0 or i_eval == evaluation_episodes -1 :
+             print(f"Eval Scenario {i_eval+1}/{evaluation_episodes}: Baseline SINR={baseline_sinr:.2f}, DRL SINR={avg_drl_sinr_eval:.2f}, Baseline Det={baseline_detected}, DRL Det={drl_detected_in_eval_episode}")
 
     agent.epsilon = eval_epsilon_backup
     print(f"Agent epsilon restored to {agent.epsilon:.3f}.")
@@ -783,20 +866,22 @@ def run_simulation():
     avg_baseline_detection_overall = np.mean([d['Baseline_Detected_Binary'] for d in evaluation_data]) * 100
     avg_drl_detection_overall = np.mean([d['DRL_Detected_In_Episode_Binary'] for d in evaluation_data]) * 100
 
-    print(f"\n--- Overall Evaluation Averages ---")
+    print(f"\n--- Overall Evaluation Averages (for {evaluation_episodes} scenarios) ---")
     print(f"Average Baseline SINR: {avg_baseline_sinr_overall:.2f} dB")
     print(f"Average DRL SINR (greedy): {avg_drl_sinr_overall:.2f} dB")
     print(f"Baseline Detection Rate: {avg_baseline_detection_overall:.2f}%")
     print(f"DRL Detection Rate (greedy, detected in episode): {avg_drl_detection_overall:.2f}%")
-
+    
+    # Plotting section... (identical to what was provided in the full v5 code)
     try:
         import matplotlib.pyplot as plt
+        # Use the episode_data DataFrame (df_episode_data) for plotting training progress
         plt.figure(figsize=(18, 6))
 
         plt.subplot(1, 3, 1)
-        plt.plot(df['Episode'], df['Total_Reward'], label='Total Reward')
-        if len(df['Total_Reward']) >= print_freq_episodes:
-            plt.plot(df['Episode'], df['Total_Reward'].rolling(window=print_freq_episodes, center=True, min_periods=1).mean(), label=f'Moving Avg (window {print_freq_episodes})', linestyle='--')
+        plt.plot(df_episode_data['Episode'], df_episode_data['Total_Reward'], label='Total Reward')
+        if len(df_episode_data['Total_Reward']) >= print_freq_episodes:
+            plt.plot(df_episode_data['Episode'], df_episode_data['Total_Reward'].rolling(window=print_freq_episodes, center=True, min_periods=1).mean(), label=f'Moving Avg (window {print_freq_episodes})', linestyle='--')
         plt.title('Episode Rewards')
         plt.xlabel('Episode')
         plt.ylabel('Total Reward')
@@ -804,9 +889,9 @@ def run_simulation():
         plt.grid(True)
 
         plt.subplot(1, 3, 2)
-        plt.plot(df['Episode'], df['Avg_SINR'], label='Avg SINR')
-        if len(df['Avg_SINR']) >= print_freq_episodes:
-            plt.plot(df['Episode'], df['Avg_SINR'].rolling(window=print_freq_episodes, center=True, min_periods=1).mean(), label=f'Moving Avg (window {print_freq_episodes})', linestyle='--')
+        plt.plot(df_episode_data['Episode'], df_episode_data['Avg_SINR'], label='Avg SINR')
+        if len(df_episode_data['Avg_SINR']) >= print_freq_episodes:
+            plt.plot(df_episode_data['Episode'], df_episode_data['Avg_SINR'].rolling(window=print_freq_episodes, center=True, min_periods=1).mean(), label=f'Moving Avg (window {print_freq_episodes})', linestyle='--')
         plt.title('Average SINR per Episode')
         plt.xlabel('Episode')
         plt.ylabel('SINR (dB)')
@@ -814,9 +899,9 @@ def run_simulation():
         plt.grid(True)
 
         plt.subplot(1, 3, 3)
-        plt.plot(df['Episode'], df['Avg_Detection_Rate_Episode'], label='Avg Detection Rate per Episode')
-        if len(df['Avg_Detection_Rate_Episode']) >= print_freq_episodes:
-            plt.plot(df['Episode'], df['Avg_Detection_Rate_Episode'].rolling(window=print_freq_episodes, center=True, min_periods=1).mean(), label=f'Moving Avg (window {print_freq_episodes})', linestyle='--')
+        plt.plot(df_episode_data['Episode'], df_episode_data['Avg_Detection_Rate_Episode'], label='Avg Detection Rate per Episode')
+        if len(df_episode_data['Avg_Detection_Rate_Episode']) >= print_freq_episodes:
+            plt.plot(df_episode_data['Episode'], df_episode_data['Avg_Detection_Rate_Episode'].rolling(window=print_freq_episodes, center=True, min_periods=1).mean(), label=f'Moving Avg (window {print_freq_episodes})', linestyle='--')
         plt.title('Average Attack Detection Rate per Episode')
         plt.xlabel('Episode')
         plt.ylabel('Detection Rate (%)')
@@ -824,7 +909,7 @@ def run_simulation():
         plt.grid(True)
 
         plt.tight_layout()
-        plt.savefig('training_progress_v5.png')
+        plt.savefig('training_progress_v5.png') # Filename corresponds to v5
         print("Saved training_progress_v5.png")
     except ImportError:
         print("Matplotlib not found. Skipping plot generation.")
@@ -834,18 +919,8 @@ def run_simulation():
     env.close()
     print("Training finished.")
 
+# This block ensures run_simulation() is called when you execute the script
 if __name__ == "__main__":
-    gpus = tf.config.list_physical_devices('GPU')
-    if gpus:
-        print(f"Found {len(gpus)} GPU(s):")
-        try:
-            for i, gpu in enumerate(gpus):
-                tf.config.experimental.set_memory_growth(gpu, True)
-                print(f"  GPU {i}: {gpu.name} - Memory growth enabled.")
-            logical_gpus = tf.config.list_logical_devices('GPU')
-            print(f"TensorFlow sees {len(logical_gpus)} Logical GPU(s).")
-        except RuntimeError as e:
-            print(f"RuntimeError during GPU setup: {e}")
-    else:
-        print("No GPU detected. Running on CPU.")
+    print("--- Script execution started by __main__ block ---")
     run_simulation()
+    print("--- Script execution finished ---")    

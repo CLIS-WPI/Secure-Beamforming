@@ -405,7 +405,7 @@ class MmWaveISACEnv(gym.Env):
 
         if action_idx == 0: current_az_val -= self.beam_angle_delta_rad
         elif action_idx == 1: current_az_val += self.beam_angle_delta_rad
-        elif action_idx == 2: pass
+        elif action_idx == 2: pass # Hold beam
         elif action_idx == 3: self.current_isac_effort += 0.2
         elif action_idx == 4: self.current_isac_effort -= 0.2
 
@@ -424,7 +424,7 @@ class MmWaveISACEnv(gym.Env):
         self.attacker_position.assign_add(tf.constant(attacker_pos_offset, dtype=tf.float32))
 
         next_state = self._get_state()
-        reward = self._compute_reward(next_state)
+        reward = self._compute_reward(next_state) # Ensure _compute_reward is the refined version from v5
         self.current_step += 1
 
         terminated = False
@@ -433,24 +433,46 @@ class MmWaveISACEnv(gym.Env):
         if self.current_step >= self.max_steps_per_episode:
             truncated = True
 
-        if self._is_beam_stolen(next_state):
+        # --- MODIFIED/RELAXED TERMINATION CONDITIONS ---
+        if self._is_beam_stolen(next_state): # Keep this as a strong termination condition
             terminated = True
-            reward -= 50
+            # The penalty for beam stolen is already in _compute_reward or can be added here.
+            # The original code had `reward -= 50` here. Let's ensure it's significant.
+            # This penalty should ideally be part of the reward function's logic if beam_stolen is part of the state
+            # or handled immediately after reward calculation. For now, keeping it simple.
+            # The reward function already applies penalties, this is an additional one for termination.
+            # Let's make it consistent with the previous strong penalty.
+            reward -= 50 
+            logging.info(f"TERMINATED due to BEAM STOLEN. Additional penalty -50 applied.")
 
-        if next_state[0] < -10.0:
-            if not terminated: reward -= 15
-            terminated = True
+
+        # MODIFICATION 1: More lenient SINR threshold for termination
+        if next_state[0] < -15.0: # Changed from -10.0 to -15.0
+            if not terminated: 
+                reward -= 10 # Penalty for very low SINR (can be adjusted)
+                terminated = True
+                logging.info(f"TERMINATED due to very low SINR: {next_state[0]:.2f} dB. Additional penalty -10 applied.")
         
+        # MODIFICATION 2: Temporarily COMMENT OUT or make MUCH MORE lenient the "attacker too close and not detected" termination
+        # This is a primary suspect for very short episodes.
+        # We want the agent to learn to handle this via rewards, not just by ending the episode.
+        """
         bs_pos_np = self.bs_position.numpy()[0,:2]
         attacker_pos_np = self.attacker_position.numpy()[0,:2]
-        user_pos_np = self.user_position.numpy()[0,:2]
+        # user_pos_np = self.user_position.numpy()[0,:2] # Not used in current logic
         dist_attacker_bs = np.linalg.norm(attacker_pos_np - bs_pos_np)
-        dist_attacker_user = np.linalg.norm(attacker_pos_np - user_pos_np)
+        # dist_attacker_user = np.linalg.norm(attacker_pos_np - user_pos_np) # Not used in current logic
 
-        if (dist_attacker_bs < 10.0 or dist_attacker_user < 10.0) and next_state[4] < 0.5 :
-            if not terminated: reward -= 25 
-            terminated = True
-            logging.info(f"TERMINATED: Attacker too close ({dist_attacker_bs:.1f}m from BS, {dist_attacker_user:.1f}m from User) and not detected (conf={next_state[4]:.2f}).")
+        # Original condition: if (dist_attacker_bs < 10.0 or dist_attacker_user < 10.0) and next_state[4] < 0.5 :
+        # For now, let's disable this termination to see if episodes run longer.
+        # The reward function should ideally penalize this scenario.
+        # if (dist_attacker_bs < 5.0) and next_state[4] < 0.3 : # Example of much stricter condition
+        #     if not terminated: reward -= 25 
+        #     terminated = True
+        #     logging.info(f"TERMINATED: Attacker EXTREMELY close to BS ({dist_attacker_bs:.1f}m) and POORLY detected (conf={next_state[4]:.2f}).")
+        """
+        # The penalty for missing a nearby attacker is already in _compute_reward.
+        # Rely on that for now to encourage longer episodes.
 
         return next_state, reward, terminated, truncated, {}
 
@@ -558,38 +580,39 @@ class MmWaveISACEnv(gym.Env):
 # DRL Agent (Double DQN)
 class DoubleDQNAgent:
     def __init__(self, state_dim, action_n, learning_rate=0.0001, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # MODIFIED: Parameter name and default
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # MODIFIED: Parameter name for clarity
         self.state_dim = int(state_dim)
         self.action_n = action_n
         self.memory = deque(maxlen=50000)
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end
-        # MODIFIED: Epsilon decay calculation and new counter
-        if epsilon_decay_env_steps > 0:
+        
+        # MODIFIED: Epsilon decay calculation and new counter for environment steps
+        if epsilon_decay_env_steps > 0: # Avoid division by zero
             self.epsilon_decay_val = (epsilon_start - epsilon_end) / epsilon_decay_env_steps
         else:
-            self.epsilon_decay_val = 0 # Avoid division by zero if steps is 0
-        self.env_steps_count = 0 
-        # self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps # REMOVED
+            self.epsilon_decay_val = 0 # No decay if steps is zero
+        self.env_steps_count = 0  # This will track calls to act()
+        # self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps # REMOVED THIS LINE
 
         self.learning_rate = learning_rate
-        self.batch_size = 64
+        self.batch_size = 64 # As per previous successful setup
 
         self.model = self._build_model()
         self.target_model = self._build_model()
         self.update_target_model()
 
-    # Inside the DoubleDQNAgent class
     def _build_model(self):
-        model = tf.keras.Sequential([  # Change here
-            tf.keras.layers.Input(shape=(self.state_dim,)), # Change here
-            tf.keras.layers.Dense(128, activation='relu'),    # Change here
-            tf.keras.layers.Dense(64, activation='relu'),     # Change here
-            tf.keras.layers.Dense(self.action_n, activation='linear') # Change here
+        # Using tf.keras consistently as per your top block
+        model = tf.keras.Sequential([
+            tf.keras.layers.Input(shape=(self.state_dim,)),
+            tf.keras.layers.Dense(128, activation='relu'),
+            tf.keras.layers.Dense(64, activation='relu'),
+            tf.keras.layers.Dense(self.action_n, activation='linear')
         ])
-        model.compile(loss=tf.keras.losses.Huber(), # Change here
-                      optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate)) # Change here
+        model.compile(loss=tf.keras.losses.Huber(),
+                      optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
         return model
 
     def update_target_model(self):
@@ -599,7 +622,7 @@ class DoubleDQNAgent:
         self.memory.append((state, action_idx, reward, next_state, done))
 
     def act(self, state):
-        self.env_steps_count += 1 # MODIFIED: Increment environment step counter
+        self.env_steps_count += 1 # MODIFIED: Increment environment step counter here
         action = 0 
         if np.random.rand() <= self.epsilon:
             action = random.randrange(self.action_n)
@@ -609,10 +632,10 @@ class DoubleDQNAgent:
             act_values = self.model.predict(state_for_pred, verbose=0)
             action = np.argmax(act_values[0])
 
-        # MODIFIED: Decay epsilon based on environment steps
+        # MODIFIED: Decay epsilon here, based on environment steps
         if self.epsilon > self.epsilon_end:
             self.epsilon -= self.epsilon_decay_val
-            if self.epsilon < self.epsilon_end: # Ensure it doesn't go below min
+            if self.epsilon < self.epsilon_end: # Clip at epsilon_end
                 self.epsilon = self.epsilon_end
         return action
 
@@ -641,9 +664,9 @@ class DoubleDQNAgent:
 
         history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0, batch_size=self.batch_size)
         
-        # MODIFIED: Epsilon decay logic REMOVED from here
+        # MODIFIED: Epsilon decay logic was REMOVED from here
         # if self.epsilon > self.epsilon_end:
-        #     self.epsilon -= self.epsilon_decay 
+        #     self.epsilon -= self.epsilon_decay # Incorrect variable name and logic place
         #     self.epsilon = max(self.epsilon_end, self.epsilon)
 
         return history.history['loss'][0]
@@ -656,21 +679,24 @@ class DoubleDQNAgent:
             logging.error(f"Error saving model weights to {name}: {e}")
 
 # Main simulation function
+# Main simulation function
 def run_simulation():
     print("Starting DRL Simulation for Secure mmWave ISAC Beamforming...")
     env = MmWaveISACEnv()
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
 
-    episodes = 1500 
+    episodes = 1700 # Or your desired number of episodes, e.g., 5000
     total_expected_env_steps = episodes * env.max_steps_per_episode
-    # MODIFIED: Calculation of epsilon_decay_env_steps_val
+    
+    # MODIFIED: Calculation and passing of epsilon_decay_env_steps_val
     # Epsilon will decay over approximately 2/3 of total environment steps
+    # This ensures epsilon reaches its minimum value before training ends.
     epsilon_decay_env_steps_val = int(total_expected_env_steps * (2/3)) 
-    # Ensure it's at least a significant number of steps, e.g., 25000, or a large fraction of total steps
+    # Set a reasonable minimum number of steps for decay, e.g., if episodes is very small
     epsilon_decay_env_steps_val = max(epsilon_decay_env_steps_val, 25000) 
-    # For 1500 episodes * 50 steps/ep = 75000 total steps. 75000 * (2/3) = 50000.
-    # So epsilon_decay_env_steps_val will be 50000 with current settings.
+    # For 1700 episodes * 50 steps/ep = 85000 total steps. 85000 * (2/3) approx 56100.
+    # This means epsilon_decay_env_steps_val will be around 56100 for 1700 episodes.
 
     agent = DoubleDQNAgent(state_dim, action_n,
                            learning_rate=0.0001,
@@ -679,11 +705,8 @@ def run_simulation():
                            epsilon_decay_env_steps=epsilon_decay_env_steps_val) # MODIFIED: Parameter name passed
     logging.info(f"Agent initialized with epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
 
-    # ... (بقیه تابع run_simulation بدون تغییر باقی می‌ماند) ...
-    # ... (The rest of the run_simulation function remains unchanged) ...
-
-    # Make sure the part saving step_level_data_list and evaluation_episodes=50 is there
-    # from the previous full code I provided (simulation_v5)
+    # ... The rest of your run_simulation function remains the same as the v5 version ...
+    # (including step-level data logging and evaluation phase with 50 episodes)
 
     target_update_freq_steps = 1000
     print_freq_episodes = 10
@@ -733,10 +756,8 @@ def run_simulation():
             if len(agent.memory) >= agent.batch_size:
                 loss = agent.replay()
                 total_training_updates += 1
-                if total_training_updates > 0 and total_training_updates % 200 == 0: # Log less frequently
-                    # Log env_steps_count to see how many times act() was called
+                if total_training_updates > 0 and total_training_updates % 200 == 0: 
                     logging.debug(f"Episode {e+1}, EnvStep {agent.env_steps_count}, TrainUpdate {total_training_updates}, Loss: {loss:.4f}, Epsilon: {agent.epsilon:.4f}")
-
 
             if total_training_updates > 0 and total_training_updates % target_update_freq_steps == 0:
                 agent.update_target_model()
@@ -754,7 +775,7 @@ def run_simulation():
             'Avg_SINR': avg_episode_sinr,
             'Avg_Detection_Rate_Episode': avg_episode_detection_rate,
             'Steps': step + 1,
-            'Epsilon_End_Episode': agent.epsilon # Epsilon at the end of episode
+            'Epsilon_End_Episode': agent.epsilon 
         })
 
         if (e + 1) % print_freq_episodes == 0:
@@ -798,20 +819,15 @@ def run_simulation():
 
     evaluation_data = []
     for i_eval in range(evaluation_episodes):
-        # Baseline Evaluation (simplified: reset and take state)
-        state_b, _ = env.reset() 
-        env.current_beam_angles_tf.assign([0.0]) 
-        env.current_isac_effort = 0.7 
-        
         baseline_sinrs_scenario = []
         baseline_detections_scenario = []
-        # For a slightly more robust baseline, let's average over a few resets or steps if env was dynamic
-        # Since user/attacker positions are randomized on reset, multiple resets give different baseline scenarios
-        for _i_b_step in range(evaluation_steps): # Simulate some steps for baseline by just getting varied initial states
-            if _i_b_step > 0 : # For steps after the first, reset again to get new positions
+        for _i_b_step in range(evaluation_steps): 
+            if _i_b_step == 0: # For the first step, use the reset from the DRL agent's turn or do a fresh one.
+                state_b, _ = env.reset() 
+            else: # For subsequent steps, just get a new randomization for positions via reset.
                  _, _ = env.reset()
-                 env.current_beam_angles_tf.assign([0.0])
-                 env.current_isac_effort = 0.7
+            env.current_beam_angles_tf.assign([0.0]) 
+            env.current_isac_effort = 0.7 
             baseline_current_state_snapshot = env._get_state()
             baseline_sinrs_scenario.append(baseline_current_state_snapshot[0])
             b_conf = baseline_current_state_snapshot[4]
@@ -821,8 +837,6 @@ def run_simulation():
         baseline_sinr = np.mean(baseline_sinrs_scenario) if baseline_sinrs_scenario else -30.0
         baseline_detected = 1 if np.any(baseline_detections_scenario) else 0
 
-
-        # DRL Agent Evaluation
         state_drl, _ = env.reset() 
         drl_sinrs_episode = []
         drl_detections_episode_conf = []

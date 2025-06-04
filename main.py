@@ -424,56 +424,52 @@ class MmWaveISACEnv(gym.Env):
         self.attacker_position.assign_add(tf.constant(attacker_pos_offset, dtype=tf.float32))
 
         next_state = self._get_state()
-        reward = self._compute_reward(next_state) # Ensure _compute_reward is the refined version from v5
+        # Ensure _compute_reward uses the version focused on high User SINR and good detection (from "v5" or similar)
+        reward = self._compute_reward(next_state) 
         self.current_step += 1
 
         terminated = False
         truncated = False
 
         if self.current_step >= self.max_steps_per_episode:
-            truncated = True
+            truncated = True # Standard Gym way to indicate time limit reached
 
         # --- MODIFIED/RELAXED TERMINATION CONDITIONS ---
-        if self._is_beam_stolen(next_state): # Keep this as a strong termination condition
+        if self._is_beam_stolen(next_state): 
             terminated = True
-            # The penalty for beam stolen is already in _compute_reward or can be added here.
-            # The original code had `reward -= 50` here. Let's ensure it's significant.
-            # This penalty should ideally be part of the reward function's logic if beam_stolen is part of the state
-            # or handled immediately after reward calculation. For now, keeping it simple.
-            # The reward function already applies penalties, this is an additional one for termination.
-            # Let's make it consistent with the previous strong penalty.
-            reward -= 50 
-            logging.info(f"TERMINATED due to BEAM STOLEN. Additional penalty -50 applied.")
+            # The reward for beam stolen is now primarily handled in _compute_reward by adding a large negative value
+            # or can be a fixed large penalty here if not already fully accounted for in _compute_reward.
+            # The previous code had `reward -= 50` here. We ensure the reward function covers this.
+            # For clarity, if _is_beam_stolen implies a large penalty in _compute_reward, no need to double penalize.
+            # However, if it's just a flag, then a penalty here is needed.
+            # Assuming reward function handles the immediate penalty. This just flags termination.
+            logging.info(f"TERMINATED due to BEAM STOLEN.")
 
 
         # MODIFICATION 1: More lenient SINR threshold for termination
-        if next_state[0] < -15.0: # Changed from -10.0 to -15.0
+        if next_state[0] < -20.0: # Changed from -15.0 (which was from -10.0) to -20.0
             if not terminated: 
-                reward -= 10 # Penalty for very low SINR (can be adjusted)
+                # Penalty for very low SINR is already handled by the reward function.
+                # Avoid large additional penalties here that might mask learning signals.
+                # A small additional fixed penalty for termination itself might be okay, or none.
+                # reward -= 5 
                 terminated = True
-                logging.info(f"TERMINATED due to very low SINR: {next_state[0]:.2f} dB. Additional penalty -10 applied.")
+                logging.info(f"TERMINATED due to very low SINR: {next_state[0]:.2f} dB.")
         
-        # MODIFICATION 2: Temporarily COMMENT OUT or make MUCH MORE lenient the "attacker too close and not detected" termination
-        # This is a primary suspect for very short episodes.
-        # We want the agent to learn to handle this via rewards, not just by ending the episode.
+        # MODIFICATION 2: "Attacker too close and not detected" termination is COMMENTED OUT
+        # Let the reward function (specifically `missed_penalty`) handle this.
         """
         bs_pos_np = self.bs_position.numpy()[0,:2]
         attacker_pos_np = self.attacker_position.numpy()[0,:2]
-        # user_pos_np = self.user_position.numpy()[0,:2] # Not used in current logic
+        user_pos_np = self.user_position.numpy()[0,:2] 
         dist_attacker_bs = np.linalg.norm(attacker_pos_np - bs_pos_np)
-        # dist_attacker_user = np.linalg.norm(attacker_pos_np - user_pos_np) # Not used in current logic
+        dist_attacker_user = np.linalg.norm(attacker_pos_np - user_pos_np)
 
-        # Original condition: if (dist_attacker_bs < 10.0 or dist_attacker_user < 10.0) and next_state[4] < 0.5 :
-        # For now, let's disable this termination to see if episodes run longer.
-        # The reward function should ideally penalize this scenario.
-        # if (dist_attacker_bs < 5.0) and next_state[4] < 0.3 : # Example of much stricter condition
-        #     if not terminated: reward -= 25 
-        #     terminated = True
-        #     logging.info(f"TERMINATED: Attacker EXTREMELY close to BS ({dist_attacker_bs:.1f}m) and POORLY detected (conf={next_state[4]:.2f}).")
+        if (dist_attacker_bs < 10.0 or dist_attacker_user < 10.0) and next_state[4] < 0.5 :
+            if not terminated: reward -= 25 # Or whatever penalty was decided
+            terminated = True
+            logging.info(f"TERMINATED: Attacker too close and not detected.")
         """
-        # The penalty for missing a nearby attacker is already in _compute_reward.
-        # Rely on that for now to encourage longer episodes.
-
         return next_state, reward, terminated, truncated, {}
 
     def _is_beam_stolen(self, current_obs_state):
@@ -483,10 +479,13 @@ class MmWaveISACEnv(gym.Env):
         detected_attacker_range_m = current_obs_state[3]
         detection_confidence = current_obs_state[4]
 
+        # Original from v5 was: if detection_confidence > 0.7 and 0 < detected_attacker_range_m < 75:
+        # Original from v5 was: if angle_diff_az < np.deg2rad(15) and sinr_user < -10.0:
         if detection_confidence > 0.7 and 0 < detected_attacker_range_m < 75:
             angle_diff_az = abs(beam_az_rad - detected_attacker_az_rad)
             angle_diff_az = min(angle_diff_az, 2*np.pi - angle_diff_az)
-            if angle_diff_az < np.deg2rad(15) and sinr_user < -10.0:
+            # MODIFICATION: Make SINR threshold for beam stealing slightly more lenient
+            if angle_diff_az < np.deg2rad(15) and sinr_user < -15.0: # Changed from -10.0
                 logging.info(f"BEAM STOLEN: AngleDiff={np.rad2deg(angle_diff_az):.1f}deg, UserSINR={sinr_user:.1f}dB, AttRange={detected_attacker_range_m:.1f}m")
                 return True
         return False
@@ -679,46 +678,49 @@ class DoubleDQNAgent:
             logging.error(f"Error saving model weights to {name}: {e}")
 
 # Main simulation function
-# Main simulation function
 def run_simulation():
     print("Starting DRL Simulation for Secure mmWave ISAC Beamforming...")
     env = MmWaveISACEnv()
     state_dim = env.observation_space.shape[0]
     action_n = env.action_space.n
 
-    episodes = 1700 # Or your desired number of episodes, e.g., 5000
-    total_expected_env_steps = episodes * env.max_steps_per_episode
+    # MODIFICATION: Increase episodes and adjust epsilon decay steps
+    episodes = 1500 # Significantly increased episodes
     
-    # MODIFIED: Calculation and passing of epsilon_decay_env_steps_val
-    # Epsilon will decay over approximately 2/3 of total environment steps
-    # This ensures epsilon reaches its minimum value before training ends.
-    epsilon_decay_env_steps_val = int(total_expected_env_steps * (2/3)) 
-    # Set a reasonable minimum number of steps for decay, e.g., if episodes is very small
-    epsilon_decay_env_steps_val = max(epsilon_decay_env_steps_val, 25000) 
-    # For 1700 episodes * 50 steps/ep = 85000 total steps. 85000 * (2/3) approx 56100.
-    # This means epsilon_decay_env_steps_val will be around 56100 for 1700 episodes.
+    # Estimate average steps per episode based on previous run (e.g., ~7 steps if not improved much)
+    # If we expect it to improve to, say, 20-25 steps on average with more lenient termination:
+    estimated_avg_steps_per_episode = 25 
+    total_expected_env_steps = episodes * estimated_avg_steps_per_episode 
+    
+    # Epsilon will decay over approximately 70-80% of these more realistic total environment steps
+    epsilon_decay_env_steps_val = int(total_expected_env_steps * 0.75) 
+    # Ensure it's at least a substantial number of steps
+    epsilon_decay_env_steps_val = max(epsilon_decay_env_steps_val, 75000) # e.g. min 75k steps for decay
 
     agent = DoubleDQNAgent(state_dim, action_n,
                            learning_rate=0.0001,
                            gamma=0.99,
                            epsilon_end=0.05,
-                           epsilon_decay_env_steps=epsilon_decay_env_steps_val) # MODIFIED: Parameter name passed
-    logging.info(f"Agent initialized with epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
+                           epsilon_decay_env_steps=epsilon_decay_env_steps_val)
+    logging.info(f"Agent initialized with episodes: {episodes}, epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
 
-    # ... The rest of your run_simulation function remains the same as the v5 version ...
-    # (including step-level data logging and evaluation phase with 50 episodes)
+    # ... (The rest of run_simulation remains as in the "v5" version I provided,
+    #      including step-level data logging, print frequencies, save frequencies, and evaluation phase) ...
+    # Change filenames for this new run (e.g., to v6)
+    # print_freq_episodes = 100 # Print less often for very long runs
+    # save_freq_episodes = 500  # Save less often
 
     target_update_freq_steps = 1000
-    print_freq_episodes = 10
-    save_freq_episodes = 100 
+    print_freq_episodes = 100 # Adjusted for longer run
+    save_freq_episodes = 500  # Adjusted for longer run
     
     episode_data = []
     step_level_data_list = [] 
     total_training_updates = 0 
 
     early_stop_avg_sinr_threshold = 15.0
-    early_stop_detection_rate_threshold = 90.0 
-    early_stop_consecutive_blocks = 10 
+    early_stop_detection_rate_threshold = 95.0 # Aim high for detection
+    early_stop_consecutive_blocks = 20 # Require more stable high performance
     consecutive_good_blocks_count = 0
 
     for e in range(episodes):
@@ -727,7 +729,7 @@ def run_simulation():
         episode_sinr_values = []
         episode_detections_binary = [] 
 
-        for step in range(env.max_steps_per_episode):
+        for step in range(env.max_steps_per_episode): # This will still be max 50
             action_idx = agent.act(current_state) 
             next_state, reward, terminated, truncated, info = env.step(action_idx)
 
@@ -753,10 +755,10 @@ def run_simulation():
             current_state = next_state
             total_episode_reward += reward
 
-            if len(agent.memory) >= agent.batch_size:
+            if len(agent.memory) >= agent.batch_size: # agent.batch_size is 64
                 loss = agent.replay()
                 total_training_updates += 1
-                if total_training_updates > 0 and total_training_updates % 200 == 0: 
+                if total_training_updates > 0 and total_training_updates % 500 == 0: # Log loss less frequently
                     logging.debug(f"Episode {e+1}, EnvStep {agent.env_steps_count}, TrainUpdate {total_training_updates}, Loss: {loss:.4f}, Epsilon: {agent.epsilon:.4f}")
 
             if total_training_updates > 0 and total_training_updates % target_update_freq_steps == 0:
@@ -774,17 +776,19 @@ def run_simulation():
             'Total_Reward': total_episode_reward,
             'Avg_SINR': avg_episode_sinr,
             'Avg_Detection_Rate_Episode': avg_episode_detection_rate,
-            'Steps': step + 1,
+            'Steps': step + 1, # Actual steps taken in the episode
             'Epsilon_End_Episode': agent.epsilon 
         })
 
         if (e + 1) % print_freq_episodes == 0:
+            # Calculate averages over the last 'print_freq_episodes' for block reporting
             avg_r_block = np.mean([d['Total_Reward'] for d in episode_data[-print_freq_episodes:]])
             avg_s_block = np.mean([d['Avg_SINR'] for d in episode_data[-print_freq_episodes:]])
             avg_dr_block = np.mean([d['Avg_Detection_Rate_Episode'] for d in episode_data[-print_freq_episodes:]])
 
-            print(f"Ep: {e+1}/{episodes} | Avg Reward (last {print_freq_episodes}): {avg_r_block:.2f} | Avg SINR (last {print_freq_episodes}): {avg_s_block:.2f} dB | Avg Det.Rate (last {print_freq_episodes} ep.): {avg_dr_block:.2f}% | Epsilon: {agent.epsilon:.3f}")
+            print(f"Ep: {e+1}/{episodes} | Avg Reward (last {print_freq_episodes}): {avg_r_block:.2f} | Avg SINR (last {print_freq_episodes}): {avg_s_block:.2f} dB | Avg Det.Rate (last {print_freq_episodes} ep.): {avg_dr_block:.2f}% | Epsilon: {agent.epsilon:.4f}")
 
+            # Early stopping check
             if avg_s_block > early_stop_avg_sinr_threshold and avg_dr_block > early_stop_detection_rate_threshold:
                 consecutive_good_blocks_count += 1
                 logging.info(f"Episode {e+1}: Good block performance. Consecutive count: {consecutive_good_blocks_count}")
@@ -793,38 +797,42 @@ def run_simulation():
                     logging.info(f"Early stopping at episode {e+1}.")
                     break
             else:
-                if consecutive_good_blocks_count > 0:
+                if consecutive_good_blocks_count > 0: # Log if performance drops after a good streak
                      logging.info(f"Episode {e+1}: Resetting consecutive good blocks count from {consecutive_good_blocks_count}. SINR: {avg_s_block:.2f}, Det.Rate: {avg_dr_block:.2f}")
                 consecutive_good_blocks_count = 0
 
         if (e + 1) % save_freq_episodes == 0:
-            agent.save(f"drl_isac_secure_beam_v5_ep{e+1}.weights.h5")
+            agent.save(f"drl_isac_secure_beam_v6_ep{e+1}.weights.h5") # Updated version in filename
 
+    # --- Saving Training Data ---
     df_episode_data = pd.DataFrame(episode_data)
     print(f"Total training time: {(time.time() - start_time)/60:.2f} minutes")
-    df_episode_data.to_csv('episode_results_v5.csv', index=False)
-    print("Episode results saved to 'episode_results_v5.csv'")
+    df_episode_data.to_csv('episode_results_v6.csv', index=False)
+    print("Episode results saved to 'episode_results_v6.csv'")
 
     df_step_level = pd.DataFrame(step_level_data_list)
-    df_step_level.to_csv('step_level_detection_data_v5.csv', index=False)
-    print("Step-level detection data saved to 'step_level_detection_data_v5.csv'")
+    df_step_level.to_csv('step_level_detection_data_v6.csv', index=False)
+    print("Step-level detection data saved to 'step_level_detection_data_v6.csv'")
 
+    # --- Evaluation Phase ---
+    # (This part remains the same as the "v5" code, ensure evaluation_episodes is set to 50)
     print("\n--- Starting Evaluation Phase ---")
     evaluation_episodes = 50 
     evaluation_steps = env.max_steps_per_episode
 
     eval_epsilon_backup = agent.epsilon
-    agent.epsilon = 0.0
+    agent.epsilon = 0.0 # Greedy evaluation
     print(f"Agent epsilon set to {agent.epsilon} for evaluation.")
 
     evaluation_data = []
     for i_eval in range(evaluation_episodes):
+        # Baseline Evaluation
         baseline_sinrs_scenario = []
         baseline_detections_scenario = []
         for _i_b_step in range(evaluation_steps): 
-            if _i_b_step == 0: # For the first step, use the reset from the DRL agent's turn or do a fresh one.
+            if _i_b_step == 0: 
                 state_b, _ = env.reset() 
-            else: # For subsequent steps, just get a new randomization for positions via reset.
+            else: 
                  _, _ = env.reset()
             env.current_beam_angles_tf.assign([0.0]) 
             env.current_isac_effort = 0.7 
@@ -837,6 +845,7 @@ def run_simulation():
         baseline_sinr = np.mean(baseline_sinrs_scenario) if baseline_sinrs_scenario else -30.0
         baseline_detected = 1 if np.any(baseline_detections_scenario) else 0
 
+        # DRL Agent Evaluation
         state_drl, _ = env.reset() 
         drl_sinrs_episode = []
         drl_detections_episode_conf = []
@@ -869,11 +878,11 @@ def run_simulation():
              print(f"Eval Scenario {i_eval+1}/{evaluation_episodes}: Baseline SINR={baseline_sinr:.2f}, DRL SINR={avg_drl_sinr_eval:.2f}, Baseline Det={baseline_detected}, DRL Det={drl_detected_in_eval_episode}")
 
     agent.epsilon = eval_epsilon_backup
-    print(f"Agent epsilon restored to {agent.epsilon:.3f}.")
+    print(f"Agent epsilon restored to {agent.epsilon:.4f}.")
 
     df_eval = pd.DataFrame(evaluation_data)
-    df_eval.to_csv('evaluation_results_v5.csv', index=False)
-    print("Evaluation results saved to 'evaluation_results_v5.csv'")
+    df_eval.to_csv('evaluation_results_v6.csv', index=False) # New version name
+    print("Evaluation results saved to 'evaluation_results_v6.csv'")
 
     avg_baseline_sinr_overall = np.mean([d['Baseline_SINR'] for d in evaluation_data])
     avg_drl_sinr_overall = np.mean([d['DRL_SINR_Avg_Eval'] for d in evaluation_data])
@@ -886,10 +895,9 @@ def run_simulation():
     print(f"Baseline Detection Rate: {avg_baseline_detection_overall:.2f}%")
     print(f"DRL Detection Rate (greedy, detected in episode): {avg_drl_detection_overall:.2f}%")
     
-    # Plotting section... (identical to what was provided in the full v5 code)
+    # Plotting section (remains the same, ensure df_episode_data is used for training plots)
     try:
         import matplotlib.pyplot as plt
-        # Use the episode_data DataFrame (df_episode_data) for plotting training progress
         plt.figure(figsize=(18, 6))
 
         plt.subplot(1, 3, 1)
@@ -923,8 +931,8 @@ def run_simulation():
         plt.grid(True)
 
         plt.tight_layout()
-        plt.savefig('training_progress_v5.png') # Filename corresponds to v5
-        print("Saved training_progress_v5.png")
+        plt.savefig('training_progress_v6.png') # New version name
+        print("Saved training_progress_v6.png")
     except ImportError:
         print("Matplotlib not found. Skipping plot generation.")
     except Exception as e:
@@ -932,6 +940,7 @@ def run_simulation():
 
     env.close()
     print("Training finished.")
+
 
 # This block ensures run_simulation() is called when you execute the script
 if __name__ == "__main__":

@@ -344,3 +344,211 @@
 2025-06-04 15:22:24,881 - DEBUG - Entering _get_state
 2025-06-04 15:22:24,881 - DEBUG - Entering _get_channel_and_powers
 2025-06-04 15:22:25,083 - DEBUG - h_user norm: (0.0004181660187896341-2.633225397712796e-13j)
+2025-06-04 15:22:25,286 - DEBUG - h_attacker norm: (0.0002712260466068983-1.3398344120372357e-13j)
+2025-06-04 15:22:25,286 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:25,288 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:25,291 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:25,293 - DEBUG - Signal power user: 4.273334464066636e-10, attacker: 3.7112646289472195e-11
+2025-06-04 15:22:25,294 - DEBUG - prob_detection: 0.5266388363247587, true_attacker_range: 50.77088928222656, isac_effort: 0.49999999999999994
+2025-06-04 15:22:25,294 - DEBUG - Returning state_array: [30.          0.08726647 -3.1415927   0.          0.         50.77089
+ -0.30505872]
+2025-06-04 15:22:25,294 - DEBUG - Entering step with action_idx: 1
+2025-06-04 15:22:25,295 - DEBUG - Entering _get_state
+2025-06-04 15:22:25,295 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:25,498 - DEBUG - h_user norm: (0.00039068603655323386-2.503298404069737e-13j)
+2025-06-04 15:22:25,701 - DEBUG - h_attacker norm: (7.2905786510091275e-06+1.7127243362707184e-15j)
+2025-06-04 15:22:25,701 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:25,702 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-06-04 15:22:25,706 - DEBUG - Steering vector norm: (19.448619842529297+0j)
+2025-06-04 15:22:25,707 - DEBUG - Signal power user: 1.116331915795854e-09, attacker: 1.05955446663247e-15
+2025-06-04 15:22:25,708 - DEBUG - prob_detection: 0.5256798257855874, true_attacker_range: 50.953155517578125, isac_effort: 0.49999999999999994
+2025-06-04 15:22:25,708 - DEBUG - Attacker detected: confidence=0.5595994046975025, detected_range=50.5387029423993, detected_az=-0.06652615857954941
+2025-06-04 15:22:25,709 - DEBUG - Returning state_array: [30.          0.17453294 -0.06652616 50.538704    0.5595994  50.953156
+ -0.3044973 ]
+2025-06-04 15:22:25,709 - DEBUG - Entering step with action_idx: 3
+2025-06-04 15:22:25,710 - DEBUG - Entering _get_state
+2025-06-04 15:22:25,710 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:25,913 - DEBUG - h_user norm: (0.00013090396532788873+9.825555930128519e-15j)
+2025-06-04 15:22:26,129 - DEBUG - h_attacker norm: (0.0005951753119006753+1.3315017762405984e-13j)
+2025-06-04 15:22:26,129 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:26,131 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-06-04 15:22:26,135 - DEBUG - Steering vector norm: (19.448619842529297+0j)
+2025-06-04 15:22:26,136 - DEBUG - Signal power user: 1.2646404756733176e-10, attacker: 1.5457994259615582e-11
+2025-06-04 15:22:26,137 - DEBUG - prob_detection: 0.7359398807534026, true_attacker_range: 50.954769134521484, isac_effort: 0.7
+2025-06-04 15:22:26,137 - DEBUG - Attacker detected: confidence=0.7974847665483851, detected_range=47.46396437670223, detected_az=-0.2699804719213714
+2025-06-04 15:22:26,138 - DEBUG - Returning state_array: [25.019669    0.17453294 -0.26998046 47.463963    0.79748476 50.95477
+ -0.3050149 ]
+2025-06-04 15:22:26,138 - DEBUG - Entering step with action_idx: 2
+2025-06-04 15:22:26,139 - DEBUG - Entering _get_state
+2025-06-04 15:22:26,139 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:26,343 - DEBUG - h_user norm: (8.104889843707497e-07+8.697582059544228e-16j)
+2025-06-04 15:22:26,547 - DEBUG - h_attacker norm: (0.00021681729413103312-7.814709708335588e-14j)
+2025-06-04 15:22:26,547 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:26,549 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-06-04 15:22:26,553 - DEBUG - Steering vector norm: (19.448619842529297+0j)
+2025-06-04 15:22:26,554 - DEBUG - Signal power user: 8.349576323233532e-17, attacker: 3.941498603193816e-12
+2025-06-04 15:22:26,554 - WARNING - Signal power user too low, setting default SINR adjustment power
+2025-06-04 15:22:26,555 - DEBUG - prob_detection: 0.739385314634133, true_attacker_range: 50.487693786621094, isac_effort: 0.7
+2025-06-04 15:22:26,555 - DEBUG - Attacker detected: confidence=0.7467259535752913, detected_range=49.817078052556795, detected_az=-0.27220050637522913
+2025-06-04 15:22:26,555 - DEBUG - Returning state_array: [-26.           0.17453294  -0.2722005   49.817078     0.746726
+  50.487694    -0.30425462]
+2025-06-04 15:22:26,556 - INFO - TERMINATED due to very low SINR: -26.00 dB.
+2025-06-04 15:22:26,556 - DEBUG - Entering MmWaveISACEnv.reset
+2025-06-04 15:22:26,557 - DEBUG - Entering _get_state
+2025-06-04 15:22:26,557 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:26,760 - DEBUG - h_user norm: (2.721284909057431e-05+1.4514421159102578e-14j)
+2025-06-04 15:22:26,962 - DEBUG - h_attacker norm: (0.0006067202775739133+1.838235103414701e-13j)
+2025-06-04 15:22:26,962 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:26,963 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-06-04 15:22:26,967 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-06-04 15:22:26,968 - DEBUG - Signal power user: 1.173848887016382e-13, attacker: 1.9087663849677583e-13
+2025-06-04 15:22:26,969 - DEBUG - prob_detection: 0.818256052297907, true_attacker_range: 40.352081298828125, isac_effort: 0.7
+2025-06-04 15:22:26,969 - DEBUG - Attacker detected: confidence=0.7985016099809354, detected_range=44.1952620041426, detected_az=-0.47267939924221203
+2025-06-04 15:22:26,970 - DEBUG - Returning state_array: [-5.3038783   0.         -0.4726794  44.195263    0.7985016  40.35208
+ -0.53935575]
+2025-06-04 15:22:26,970 - DEBUG - reset returning obs shape: (7,)
+2025-06-04 15:22:26,970 - DEBUG - Entering step with action_idx: 2
+2025-06-04 15:22:26,971 - DEBUG - Entering _get_state
+2025-06-04 15:22:26,971 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:27,184 - DEBUG - h_user norm: (0.0003422957379370928-6.228595367745822e-15j)
+2025-06-04 15:22:27,391 - DEBUG - h_attacker norm: (1.5568493836326525e-05+1.85155862674315e-14j)
+2025-06-04 15:22:27,392 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:27,393 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-06-04 15:22:27,397 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-06-04 15:22:27,399 - DEBUG - Signal power user: 2.924881170596194e-10, attacker: 8.667846713820981e-14
+2025-06-04 15:22:27,400 - DEBUG - prob_detection: 0.8186044746002349, true_attacker_range: 40.30950927734375, isac_effort: 0.7
+2025-06-04 15:22:27,400 - DEBUG - Attacker detected: confidence=0.757317907381229, detected_range=42.144255035702855, detected_az=-0.5364736119176323
+2025-06-04 15:22:27,400 - DEBUG - Returning state_array: [28.661081    0.         -0.53647363 42.144257    0.7573179  40.30951
+ -0.5399138 ]
+2025-06-04 15:22:27,401 - DEBUG - Entering step with action_idx: 1
+2025-06-04 15:22:27,401 - DEBUG - Entering _get_state
+2025-06-04 15:22:27,401 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:27,606 - DEBUG - h_user norm: (0.0007134281331673265-6.567893473009845e-15j)
+2025-06-04 15:22:27,809 - DEBUG - h_attacker norm: (0.00025265172007493675+1.724332482355706e-13j)
+2025-06-04 15:22:27,809 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:27,811 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:27,814 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:27,816 - DEBUG - Signal power user: 4.3359031920431335e-09, attacker: 4.217339151513233e-12
+2025-06-04 15:22:27,817 - DEBUG - prob_detection: 0.8191636963382242, true_attacker_range: 40.24121856689453, isac_effort: 0.7
+2025-06-04 15:22:27,817 - DEBUG - Attacker detected: confidence=0.871504383949177, detected_range=38.91563481659447, detected_az=-0.6937295181323538
+2025-06-04 15:22:27,817 - DEBUG - Returning state_array: [30.          0.08726646 -0.6937295  38.915634    0.87150437 40.24122
+ -0.54029787]
+2025-06-04 15:22:27,817 - DEBUG - Entering step with action_idx: 1
+2025-06-04 15:22:27,818 - DEBUG - Entering _get_state
+2025-06-04 15:22:27,818 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:28,021 - DEBUG - h_user norm: (1.5291647287085652e-05-1.0224552705756789e-15j)
+2025-06-04 15:22:28,226 - DEBUG - h_attacker norm: (0.0003627561090979725+8.597570084253187e-14j)
+2025-06-04 15:22:28,226 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:28,228 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-06-04 15:22:28,231 - DEBUG - Steering vector norm: (19.448619842529297+0j)
+2025-06-04 15:22:28,233 - DEBUG - Signal power user: 1.4352498952773657e-13, attacker: 3.944778965286888e-12
+2025-06-04 15:22:28,233 - DEBUG - prob_detection: 0.8187620938676133, true_attacker_range: 40.29025650024414, isac_effort: 0.7
+2025-06-04 15:22:28,234 - DEBUG - Attacker detected: confidence=0.79658817168664, detected_range=41.78136255652345, detected_az=-0.5458496689748681
+2025-06-04 15:22:28,234 - DEBUG - Returning state_array: [-4.430725    0.17453292 -0.5458497  41.781364    0.7965882  40.290257
+ -0.539838  ]
+2025-06-04 15:22:28,235 - DEBUG - Entering step with action_idx: 2
+2025-06-04 15:22:28,235 - DEBUG - Entering _get_state
+2025-06-04 15:22:28,235 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:28,439 - DEBUG - h_user norm: (5.760179919889197e-05+3.707698685291409e-15j)
+2025-06-04 15:22:28,642 - DEBUG - h_attacker norm: (0.00015404861187562346-5.080163449199676e-14j)
+2025-06-04 15:22:28,643 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:28,644 - DEBUG - f_theta: 2.431077480316162, f_phi: 0.0
+2025-06-04 15:22:28,648 - DEBUG - Steering vector norm: (19.448619842529297+0j)
+2025-06-04 15:22:28,649 - DEBUG - Signal power user: 2.540177790333331e-11, attacker: 3.357480580449407e-13
+2025-06-04 15:22:28,650 - DEBUG - prob_detection: 0.817921444317672, true_attacker_range: 40.392982482910156, isac_effort: 0.7
+2025-06-04 15:22:28,650 - DEBUG - Attacker detected: confidence=0.8327761734829997, detected_range=40.43349021035952, detected_az=-0.5474448397410341
+2025-06-04 15:22:28,651 - DEBUG - Returning state_array: [18.048641    0.17453292 -0.5474448  40.43349     0.8327762  40.392982
+ -0.5421789 ]
+2025-06-04 15:22:28,651 - DEBUG - Entering step with action_idx: 0
+2025-06-04 15:22:28,652 - DEBUG - Entering _get_state
+2025-06-04 15:22:28,652 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:28,856 - DEBUG - h_user norm: (2.093385046464391e-05-4.108095394623253e-15j)
+2025-06-04 15:22:29,059 - DEBUG - h_attacker norm: (0.00019092550792265683+9.818366314472225e-15j)
+2025-06-04 15:22:29,060 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:29,061 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:29,065 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:29,066 - DEBUG - Signal power user: 6.733815978779423e-13, attacker: 2.6507717462015412e-12
+2025-06-04 15:22:29,067 - DEBUG - prob_detection: 0.816642477374403, true_attacker_range: 40.54947280883789, isac_effort: 0.7
+2025-06-04 15:22:29,068 - DEBUG - Returning state_array: [ 2.2826126   0.08726646 -3.1415927   0.          0.         40.549473
+ -0.5467407 ]
+2025-06-04 15:22:29,068 - DEBUG - Entering step with action_idx: 0
+2025-06-04 15:22:29,069 - DEBUG - Entering _get_state
+2025-06-04 15:22:29,069 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:29,273 - DEBUG - h_user norm: (0.00021559291053563356+1.5282316156908088e-13j)
+2025-06-04 15:22:29,477 - DEBUG - h_attacker norm: (1.765052365954034e-05+2.0176626347326657e-14j)
+2025-06-04 15:22:29,477 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:29,479 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-06-04 15:22:29,482 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-06-04 15:22:29,484 - DEBUG - Signal power user: 8.28862464774538e-11, attacker: 1.3214731771956506e-13
+2025-06-04 15:22:29,485 - DEBUG - prob_detection: 0.8169110555476, true_attacker_range: 40.5165901184082, isac_effort: 0.7
+2025-06-04 15:22:29,485 - DEBUG - Attacker detected: confidence=0.7497163850715185, detected_range=38.450522364243824, detected_az=-0.5908473942992829
+2025-06-04 15:22:29,485 - DEBUG - Returning state_array: [ 2.3184826e+01 -2.5386431e-09 -5.9084737e-01  3.8450523e+01
+  7.4971640e-01  4.0516590e+01 -5.4759061e-01]
+2025-06-04 15:22:29,485 - DEBUG - Entering step with action_idx: 3
+2025-06-04 15:22:29,486 - DEBUG - Entering _get_state
+2025-06-04 15:22:29,486 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:29,690 - DEBUG - h_user norm: (0.0002287878596689552+7.482734457010462e-14j)
+2025-06-04 15:22:29,896 - DEBUG - h_attacker norm: (0.00036770268343389034-2.363366663829525e-13j)
+2025-06-04 15:22:29,896 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:29,897 - DEBUG - f_theta: 2.5118863582611084, f_phi: 0.0
+2025-06-04 15:22:29,901 - DEBUG - Steering vector norm: (20.095090866088867+0j)
+2025-06-04 15:22:29,902 - DEBUG - Signal power user: 1.0124590749116535e-10, attacker: 1.0563030485022384e-12
+2025-06-04 15:22:29,903 - DEBUG - prob_detection: 1.0, true_attacker_range: 40.82098388671875, isac_effort: 0.8999999999999999
+2025-06-04 15:22:29,903 - DEBUG - Attacker detected: confidence=1.0, detected_range=39.913805498755664, detected_az=-0.44365327576035657
+2025-06-04 15:22:29,904 - DEBUG - Returning state_array: [ 2.4053774e+01 -2.5386431e-09 -4.4365329e-01  3.9913807e+01
+  1.0000000e+00  4.0820984e+01 -5.5673712e-01]
+2025-06-04 15:22:29,904 - DEBUG - Entering step with action_idx: 0
+2025-06-04 15:22:29,905 - DEBUG - Entering _get_state
+2025-06-04 15:22:29,905 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:30,108 - DEBUG - h_user norm: (0.0008622929453849792-1.800745289643954e-13j)
+2025-06-04 15:22:30,312 - DEBUG - h_attacker norm: (0.0003563641512300819-7.608442955525652e-14j)
+2025-06-04 15:22:30,312 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:30,314 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:30,317 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:30,319 - DEBUG - Signal power user: 1.361900002494476e-11, attacker: 9.452852563207603e-12
+2025-06-04 15:22:30,320 - DEBUG - prob_detection: 1.0, true_attacker_range: 41.05891418457031, isac_effort: 0.8999999999999999
+2025-06-04 15:22:30,320 - DEBUG - Attacker detected: confidence=0.964667725466642, detected_range=42.990660583489245, detected_az=-0.543309268819857
+2025-06-04 15:22:30,320 - DEBUG - Returning state_array: [15.341453   -0.08726647 -0.5433093  42.99066     0.96466774 41.058914
+ -0.5590602 ]
+2025-06-04 15:22:30,320 - DEBUG - Entering step with action_idx: 2
+2025-06-04 15:22:30,321 - DEBUG - Entering _get_state
+2025-06-04 15:22:30,321 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:30,525 - DEBUG - h_user norm: (0.00040965003427118063+6.944751983770439e-14j)
+2025-06-04 15:22:30,728 - DEBUG - h_attacker norm: (0.0005007074796594679-3.265962261918276e-13j)
+2025-06-04 15:22:30,728 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:30,729 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:30,733 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:30,734 - DEBUG - Signal power user: 7.2135361919856145e-12, attacker: 2.224138234696582e-11
+2025-06-04 15:22:30,735 - DEBUG - prob_detection: 1.0, true_attacker_range: 40.84229278564453, isac_effort: 0.8999999999999999
+2025-06-04 15:22:30,735 - DEBUG - Attacker detected: confidence=1.0, detected_range=42.08482348691264, detected_az=-0.6107444231251298
+2025-06-04 15:22:30,736 - DEBUG - Returning state_array: [12.581482   -0.08726647 -0.6107444  42.084824    1.         40.842293
+ -0.5625426 ]
+2025-06-04 15:22:30,736 - DEBUG - Entering step with action_idx: 2
+2025-06-04 15:22:30,737 - DEBUG - Entering _get_state
+2025-06-04 15:22:30,737 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:30,941 - DEBUG - h_user norm: (0.00014704481873195618-8.937422741987777e-14j)
+2025-06-04 15:22:31,144 - DEBUG - h_attacker norm: (0.0006246186676435173-4.146500579959439e-13j)
+2025-06-04 15:22:31,144 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:31,146 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:31,150 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:31,151 - DEBUG - Signal power user: 2.8479117935437115e-13, attacker: 2.2712186298345927e-11
+2025-06-04 15:22:31,152 - DEBUG - prob_detection: 1.0, true_attacker_range: 40.91352844238281, isac_effort: 0.8999999999999999
+2025-06-04 15:22:31,152 - DEBUG - Attacker detected: confidence=0.9487805745739143, detected_range=39.297789437884845, detected_az=-0.5780549794119271
+2025-06-04 15:22:31,152 - DEBUG - Returning state_array: [-1.4547347  -0.08726647 -0.57805496 39.29779     0.9487806  40.91353
+ -0.5687124 ]
+2025-06-04 15:22:31,153 - DEBUG - Entering step with action_idx: 4
+2025-06-04 15:22:31,154 - DEBUG - Entering _get_state
+2025-06-04 15:22:31,154 - DEBUG - Entering _get_channel_and_powers
+2025-06-04 15:22:31,357 - DEBUG - h_user norm: (0.00020349363330751657-1.1255762083018164e-13j)
+2025-06-04 15:22:31,561 - DEBUG - h_attacker norm: (0.00022050918778404593-7.476240085997274e-14j)
+2025-06-04 15:22:31,561 - DEBUG - Entering _get_steering_vector
+2025-06-04 15:22:31,563 - DEBUG - f_theta: 2.4914357662200928, f_phi: 0.0
+2025-06-04 15:22:31,566 - DEBUG - Steering vector norm: (19.931486129760742+0j)
+2025-06-04 15:22:31,568 - DEBUG - Signal power user: 1.5567709339518732e-13, attacker: 4.178210295108231e-12
+2025-06-04 15:22:31,569 - DEBUG - prob_detection: 0.8109754785728948, true_attacker_range: 41.24583053588867, isac_effort: 0.7
+2025-06-04 15:22:31,569 - DEBUG - Attacker detected: confidence=0.8425466533322842, detected_range=41.666799994641096, detected_az=-0.5242346216511986
+2025-06-04 15:22:31,569 - DEBUG - Returning state_array: [-4.077753   -0.08726647 -0.5242346  41.6668      0.84254664 41.24583
+ -0.56162006]
+2025-06-04 15:22:31,570 - DEBUG - Entering step with action_idx: 2
+2025-06-04 15:22:31,570 - DEBUG - Entering _get_state
+2025-06-04 15:22:31,571 - DEBUG - Entering _get_channel_and_powers

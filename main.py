@@ -191,68 +191,105 @@ class MmWaveISACEnv(gym.Env):
         self.current_step = 0
     @tf.function
     def _get_steering_vector(self, angles_rad_tf):
-        logging.debug("Entering _get_steering_vector")
-        try:
-            azimuth_rad = tf.reshape(angles_rad_tf[0], [])
-            zenith_rad = tf.constant(np.pi/2, dtype=tf.float32)
+        # Note: Debug logs with .numpy() were removed for @tf.function compatibility.
+        azimuth_rad = tf.reshape(angles_rad_tf[0], [])
+        zenith_rad = tf.constant(np.pi/2, dtype=tf.float32)
 
-            try:
-                field_output = self.bs_array.ant_pol1.field(theta=zenith_rad, phi=azimuth_rad)
-                if not (isinstance(field_output, tuple) and len(field_output) == 2):
-                    logging.warning(f"Unexpected field output: {type(field_output)}")
-                    raise ValueError("Invalid field output")
+        # Antenna gain calculations must be done within the graph.
+        # Assuming self.bs_array.ant_pol1.field is graph-compatible.
+        f_theta, _ = self.bs_array.ant_pol1.field(theta=zenith_rad, phi=azimuth_rad)
+        f_theta = tf.reduce_mean(tf.squeeze(f_theta))
+        f_theta = tf.cast(f_theta, tf.complex64)
 
-                f_theta, f_phi = field_output
-                f_theta = tf.reduce_mean(tf.squeeze(f_theta))
-                logging.debug(f"f_theta: {f_theta.numpy()}, f_phi: {f_phi.numpy()}")
-                f_theta = tf.cast(f_theta, tf.complex64)
-            except Exception as e:
-                logging.warning(f"Field computation failed: {e}. Using default gain.")
-                f_theta = tf.constant(1.0, dtype=tf.complex64)
+        num_bs_physical_rows_float = tf.cast(self.num_bs_physical_rows, dtype=tf.float32)
+        num_bs_physical_cols_float = tf.cast(self.num_bs_physical_cols, dtype=tf.float32)
 
-            num_bs_physical_rows_float = tf.cast(self.num_bs_physical_rows, dtype=tf.float32)
-            num_bs_physical_cols_float = tf.cast(self.num_bs_physical_cols, dtype=tf.float32)
+        row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - (num_bs_physical_rows_float - 1.0) / 2.0
+        col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - (num_bs_physical_cols_float - 1.0) / 2.0
 
-            row_indices = tf.range(self.num_bs_physical_rows, dtype=tf.float32) - (num_bs_physical_rows_float - 1.0) / 2.0
-            col_indices = tf.range(self.num_bs_physical_cols, dtype=tf.float32) - (num_bs_physical_cols_float - 1.0) / 2.0
+        d_v = d_h = 0.5
+        wavelength = 3e8 / self.carrier_frequency
+        k = 2.0 * np.pi / wavelength
 
-            d_v = d_h = 0.5
-            wavelength = 3e8 / self.carrier_frequency
-            k = 2 * np.pi / wavelength
+        row_grid, col_grid = tf.meshgrid(row_indices, col_indices, indexing='ij')
+        positions_y = row_grid * d_v * wavelength
+        positions_x = col_grid * d_h * wavelength
+        positions_z = tf.zeros_like(positions_x)
+        positions = tf.stack([positions_x, positions_y, positions_z], axis=-1)
+        positions = tf.reshape(positions, [-1, 3])
 
-            row_grid, col_grid = tf.meshgrid(row_indices, col_indices, indexing='ij')
-            positions_y = row_grid * d_v * wavelength
-            positions_x = col_grid * d_h * wavelength
-            positions_z = tf.zeros_like(positions_x)
-            positions = tf.stack([positions_x, positions_y, positions_z], axis=-1)
-            positions = tf.reshape(positions, [-1, 3])
+        sin_theta_val = tf.sin(zenith_rad)
+        cos_theta_val = tf.cos(zenith_rad)
+        sin_phi_val = tf.sin(azimuth_rad)
+        cos_phi_val = tf.cos(azimuth_rad)
 
-            sin_theta_val = tf.sin(zenith_rad)
-            cos_theta_val = tf.cos(zenith_rad)
-            sin_phi_val = tf.sin(azimuth_rad)
-            cos_phi_val = tf.cos(azimuth_rad)
+        direction = tf.stack([sin_theta_val * cos_phi_val, sin_theta_val * sin_phi_val, cos_theta_val], axis=0)
+        direction = tf.expand_dims(direction, axis=0)
 
-            direction = tf.stack([sin_theta_val * cos_phi_val, sin_theta_val * sin_phi_val, cos_theta_val], axis=0)
-            direction = tf.expand_dims(direction, axis=0)
+        phase_shifts = tf.cast(k, dtype=tf.float32) * tf.reduce_sum(positions * direction, axis=-1)
+        array_response = tf.exp(tf.complex(0.0, phase_shifts))
 
-            phase_shifts = k * tf.reduce_sum(positions * direction, axis=-1)
-            array_response = tf.exp(tf.complex(0.0, phase_shifts))
+        sv = array_response * f_theta
+        sv = tf.cast(sv, tf.complex64)
+        sv = tf.ensure_shape(sv, [self.num_bs_antennas])
+        
+        return sv
+    def step(self, action_idx):
+        # این لاگ مشکلی ایجاد نمی‌کند چون این تابع با @tf.function تزئین نشده
+        logging.debug(f"Entering step with action_idx: {action_idx}")
+        current_az_val = self.current_beam_angles_tf.numpy()[0]
 
-            sv = array_response * f_theta
-            if sv.shape[0] != self.num_bs_antennas:
-                logging.error(f"Steering vector calculation resulted in {sv.shape[0]} elements, expected {self.num_bs_antennas}. Falling back to tf.ones.")
-                sv = tf.ones([self.num_bs_antennas], dtype=tf.complex64)
+        if action_idx == 0: current_az_val -= self.beam_angle_delta_rad
+        elif action_idx == 1: current_az_val += self.beam_angle_delta_rad
+        elif action_idx == 2: pass # Hold beam
+        elif action_idx == 3: self.current_isac_effort += 0.2
+        elif action_idx == 4: self.current_isac_effort -= 0.2
 
-            sv = tf.cast(sv, tf.complex64)
-            sv = tf.ensure_shape(sv, [self.num_bs_antennas])
-            logging.debug(f"Steering vector norm: {tf.norm(sv).numpy()}")
-            return sv
-        except Exception as e:
-            logging.error(f"Error in _get_steering_vector: {e}")
-            return tf.ones([self.num_bs_antennas], dtype=tf.complex64)
+        self.current_isac_effort = np.clip(self.current_isac_effort, 0.3, 1.0)
+        current_az_val = np.clip(current_az_val, -np.pi, np.pi)
+        self.current_beam_angles_tf.assign([current_az_val])
+
+        user_move_dist = self.np_random.uniform(0, 0.1)
+        user_move_angle = self.np_random.uniform(-np.pi, np.pi)
+        user_pos_offset = np.array([[user_move_dist * np.cos(user_move_angle), user_move_dist * np.sin(user_move_angle), 0.0]], dtype=np.float32)
+        self.user_position.assign_add(tf.constant(user_pos_offset, dtype=tf.float32))
+
+        attacker_move_dist = self.np_random.uniform(0, 0.5)
+        attacker_move_angle = self.np_random.uniform(-np.pi, np.pi)
+        attacker_pos_offset = np.array([[attacker_move_dist * np.cos(attacker_move_angle), attacker_move_dist * np.sin(attacker_move_angle), 0.0]], dtype=np.float32)
+        self.attacker_position.assign_add(tf.constant(attacker_pos_offset, dtype=tf.float32))
+
+        # 1. دریافت وضعیت بعدی به صورت تنسور از تابع بهینه شده
+        next_state_tensor = self._get_state()
+        
+        # 2. تبدیل تنسور به آرایه NumPy در اینجا (خارج از محدوده @tf.function)
+        next_state = next_state_tensor.numpy()
+        
+        # 3. استفاده از آرایه NumPy برای بقیه محاسبات
+        reward = self._compute_reward(next_state) 
+        self.current_step += 1
+
+        terminated = False
+        truncated = False
+
+        if self.current_step >= self.max_steps_per_episode:
+            truncated = True
+
+        # بررسی شرایط اتمام با استفاده از آرایه NumPy
+        if self._is_beam_stolen(next_state): 
+            terminated = True
+            logging.info(f"TERMINATED due to BEAM STOLEN.")
+
+        if next_state[0] < -20.0:
+            if not terminated: 
+                terminated = True
+                logging.info(f"TERMINATED due to very low SINR: {next_state[0]:.2f} dB.")
+        
+        return next_state, reward, terminated, truncated, {}
+    
     @tf.function
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
-        logging.debug("Entering _get_channel_and_powers")
+        #logging.debug("Entering _get_channel_and_powers")
         try:
             current_batch_size = tf.shape(user_pos_in)[0]
             bs_loc_reshaped = tf.reshape(self.bs_position, [current_batch_size, self.num_bs, 3])
@@ -279,7 +316,7 @@ class MmWaveISACEnv(gym.Env):
             h_user_time_all_paths, _ = self.channel_model_core(num_time_samples_val, sampling_frequency_val)
             h_user = tf.reduce_mean(h_user_time_all_paths[:, 0, 0, 0, :, 0, 0], axis=0)
             tf.ensure_shape(h_user, [self.num_bs_antennas])
-            logging.debug(f"h_user norm: {tf.norm(h_user).numpy()}")
+            #logging.debug(f"h_user norm: {tf.norm(h_user).numpy()}")
 
             self.channel_model_core.set_topology(
                 ut_loc=attacker_loc_reshaped,
@@ -292,7 +329,7 @@ class MmWaveISACEnv(gym.Env):
             h_attacker_time_all_paths, _ = self.channel_model_core(num_time_samples_val, sampling_frequency_val)
             h_attacker = tf.reduce_mean(h_attacker_time_all_paths[:, 0, 0, 0, :, 0, 0], axis=0)
             tf.ensure_shape(h_attacker, [self.num_bs_antennas])
-            logging.debug(f"h_attacker norm: {tf.norm(h_attacker).numpy()}")
+            #logging.debug(f"h_attacker norm: {tf.norm(h_attacker).numpy()}")
 
             steering_vec = self._get_steering_vector(current_beam_angles_tf_in)
             steering_vec = tf.reshape(steering_vec, [-1])
@@ -307,70 +344,81 @@ class MmWaveISACEnv(gym.Env):
 
             signal_power_user = tf.abs(y_user_eff_scalar)**2 * self.tx_power_watts
             signal_power_attacker = tf.abs(y_attacker_eff_scalar)**2 * self.tx_power_watts
-            logging.debug(f"Signal power user: {signal_power_user.numpy()}, attacker: {signal_power_attacker.numpy()}")
+            #logging.debug(f"Signal power user: {signal_power_user.numpy()}, attacker: {signal_power_attacker.numpy()}")
 
             if signal_power_user < 1e-15:
-                logging.warning("Signal power user too low, setting default SINR adjustment power")
+                #logging.warning("Signal power user too low, setting default SINR adjustment power")
                 signal_power_user = tf.constant(1e-15, dtype=tf.float32)
             if signal_power_attacker < 1e-15:
-                logging.warning("Signal power attacker too low, setting default power")
+                #logging.warning("Signal power attacker too low, setting default power")
                 signal_power_attacker = tf.constant(1e-15, dtype=tf.float32)
 
             return signal_power_user, signal_power_attacker
         except Exception as e:
-            logging.error(f"Error in _get_channel_and_powers: {e}")
+            #logging.error(f"Error in _get_channel_and_powers: {e}")
             return tf.constant(1e-15, dtype=tf.float32), tf.constant(1e-15, dtype=tf.float32)
     @tf.function
     def _get_state(self):
-        logging.debug("Entering _get_state")
-        try:
-            signal_power_user_tf, signal_power_attacker_tf = self._get_channel_and_powers(
-                self.current_beam_angles_tf, self.user_position, self.attacker_position
-            )
-            signal_power_user = signal_power_user_tf.numpy()
-            sinr_user_val = 10 * log10(tf.cast(signal_power_user / (self.no_lin + 1e-20), tf.float32)).numpy() if signal_power_user > 1e-15 else -30.0
-            sinr_user_clipped = np.clip(sinr_user_val, -30.0, 30.0)
+        # This function has been completely rewritten with TensorFlow operations to be @tf.function compatible.
+        
+        # 1. Calculate signal powers (as tensors)
+        signal_power_user_tf, _ = self._get_channel_and_powers(
+            self.current_beam_angles_tf, self.user_position, self.attacker_position
+        )
 
-            sensing_noise_std_factor = 1.0 - (self.current_isac_effort * 0.75)
-            bs_pos_np = self.bs_position.numpy()[0]
-            attacker_pos_np = self.attacker_position.numpy()[0]
+        # 2. Calculate user SINR (with TensorFlow operations)
+        sinr_user_lin = signal_power_user_tf / (tf.constant(self.no_lin, dtype=tf.float32) + 1e-20)
+        # Use tf.where instead of a Python if-else
+        sinr_user_db = tf.where(
+            sinr_user_lin > 1e-10, # A floor to prevent log(0)
+            10.0 * log10(sinr_user_lin),
+            tf.constant(-30.0, dtype=tf.float32)
+        )
+        sinr_user_clipped = tf.clip_by_value(sinr_user_db, -30.0, 30.0)
 
-            true_attacker_vector = attacker_pos_np - bs_pos_np
-            true_attacker_range = np.linalg.norm(true_attacker_vector)
-            true_attacker_azimuth = np.arctan2(true_attacker_vector[1], true_attacker_vector[0])
+        # 3. Attacker position and detection calculations (with TensorFlow operations)
+        bs_pos_tf = self.bs_position[0]
+        attacker_pos_tf = self.attacker_position[0]
+        
+        true_attacker_vector = attacker_pos_tf - bs_pos_tf
+        true_attacker_range = tf.norm(true_attacker_vector)
+        true_attacker_azimuth = tf.math.atan2(true_attacker_vector[1], true_attacker_vector[0])
 
-            detected_az, detected_range, confidence = -np.pi, 0.0, 0.0
+        # Detection simulation (using tf.random)
+        detected_az = tf.constant(-np.pi, dtype=tf.float32)
+        detected_range = tf.constant(0.0, dtype=tf.float32)
+        confidence = tf.constant(0.0, dtype=tf.float32)
+        
+        isac_effort_tf = tf.cast(self.current_isac_effort, dtype=tf.float32)
+        prob_detection = isac_effort_tf * tf.exp(-0.01 * true_attacker_range)
+        prob_detection = tf.minimum(1.0, prob_detection * 1.75)
+        
+        random_sample = tf.random.uniform(shape=[], minval=0.0, maxval=1.0)
+        
+        if tf.logical_and(true_attacker_range <= self.sensing_range_max, random_sample < prob_detection):
+            sensing_noise_std_factor = 1.0 - (isac_effort_tf * 0.75)
+            noise_az = tf.random.normal(shape=[], mean=0.0, stddev=np.deg2rad(10) * sensing_noise_std_factor)
+            noise_range = tf.random.normal(shape=[], mean=0.0, stddev=5.0 * sensing_noise_std_factor)
+            
+            detected_az = true_attacker_azimuth + noise_az
+            detected_range = tf.maximum(0.1, true_attacker_range + noise_range)
+            
+            confidence = prob_detection + tf.random.normal(shape=[], mean=0.0, stddev=0.05)
+            confidence = tf.clip_by_value(confidence, 0.0, 1.0)
 
-            if true_attacker_range <= self.sensing_range_max and true_attacker_range > 0:
-                prob_detection = self.current_isac_effort * np.exp(-0.01 * true_attacker_range)
-                prob_detection = np.minimum(1.0, prob_detection * 1.75)
-                logging.debug(f"prob_detection: {prob_detection}, true_attacker_range: {true_attacker_range}, isac_effort: {self.current_isac_effort}")
-                if self.np_random.random() < prob_detection:
-                    confidence = prob_detection + self.np_random.normal(0, 0.05)
-                    confidence = np.clip(confidence, 0.0, 1.0)
-                    noise_az = self.np_random.normal(0, np.deg2rad(10) * sensing_noise_std_factor)
-                    noise_range = self.np_random.normal(0, 5.0 * sensing_noise_std_factor)
-                    detected_az = true_attacker_azimuth + noise_az
-                    detected_range = max(0.1, true_attacker_range + noise_range)
-                    logging.debug(f"Attacker detected: confidence={confidence}, detected_range={detected_range}, detected_az={detected_az}")
-
-            detected_az = np.clip(detected_az, -np.pi, np.pi)
-            detected_range = np.clip(detected_range, 0, self.sensing_range_max)
-
-            state_array = np.array([
-                sinr_user_clipped,
-                self.current_beam_angles_tf[0].numpy(),
-                detected_az,
-                detected_range,
-                confidence,
-                np.clip(true_attacker_range, 0, self.sensing_range_max),
-                np.clip(true_attacker_azimuth, -np.pi, np.pi)
-            ], dtype=np.float32)
-            logging.debug(f"Returning state_array: {state_array}")
-            return state_array
-        except Exception as e:
-            logging.error(f"Exception in _get_state: {e}")
-            return np.array([-30.0, 0.0, -np.pi, 0.0, 0.0, 0.0, -np.pi], dtype=np.float32)
+        # 4. Create the final state tensor
+        state_tensor = tf.stack([
+            sinr_user_clipped,
+            self.current_beam_angles_tf[0],
+            tf.clip_by_value(detected_az, -np.pi, np.pi),
+            tf.clip_by_value(detected_range, 0.0, self.sensing_range_max),
+            confidence,
+            tf.clip_by_value(true_attacker_range, 0.0, self.sensing_range_max),
+            tf.clip_by_value(true_attacker_azimuth, -np.pi, np.pi)
+        ], axis=0)
+        
+        # Return the tensor directly, WITHOUT calling .numpy()
+        return state_tensor
 
     def reset(self, seed=None, options=None):
         logging.debug("Entering MmWaveISACEnv.reset")
@@ -391,86 +439,20 @@ class MmWaveISACEnv(gym.Env):
         self.attacker_position.assign(self.attacker_position_init + np.array([[attacker_pos_offset_x, attacker_pos_offset_y, 0.0]], dtype=np.float32))
 
         self.current_step = 0
-        obs = self._get_state()
+        
+        # Get the observation as a tensor from the decorated function
+        obs_tensor = self._get_state()
+        
+        # Convert the tensor to a NumPy array here, outside the @tf.function scope
+        obs = obs_tensor.numpy()
+        
         if obs is None:
             logging.error("reset: _get_state returned None. Returning default state.")
             obs = np.array([-30.0, 0.0, -np.pi, 0.0, 0.0, 0.0, -np.pi], dtype=np.float32)
+        
         info = {}
         logging.debug(f"reset returning obs shape: {obs.shape}")
         return obs, info
-
-    def step(self, action_idx):
-        logging.debug(f"Entering step with action_idx: {action_idx}")
-        current_az_val = self.current_beam_angles_tf.numpy()[0]
-
-        if action_idx == 0: current_az_val -= self.beam_angle_delta_rad
-        elif action_idx == 1: current_az_val += self.beam_angle_delta_rad
-        elif action_idx == 2: pass # Hold beam
-        elif action_idx == 3: self.current_isac_effort += 0.2
-        elif action_idx == 4: self.current_isac_effort -= 0.2
-
-        self.current_isac_effort = np.clip(self.current_isac_effort, 0.3, 1.0)
-        current_az_val = np.clip(current_az_val, -np.pi, np.pi)
-        self.current_beam_angles_tf.assign([current_az_val])
-
-        user_move_dist = self.np_random.uniform(0, 0.1)
-        user_move_angle = self.np_random.uniform(-np.pi, np.pi)
-        user_pos_offset = np.array([[user_move_dist * np.cos(user_move_angle), user_move_dist * np.sin(user_move_angle), 0.0]], dtype=np.float32)
-        self.user_position.assign_add(tf.constant(user_pos_offset, dtype=tf.float32))
-
-        attacker_move_dist = self.np_random.uniform(0, 0.5)
-        attacker_move_angle = self.np_random.uniform(-np.pi, np.pi)
-        attacker_pos_offset = np.array([[attacker_move_dist * np.cos(attacker_move_angle), attacker_move_dist * np.sin(attacker_move_angle), 0.0]], dtype=np.float32)
-        self.attacker_position.assign_add(tf.constant(attacker_pos_offset, dtype=tf.float32))
-
-        next_state = self._get_state()
-        # Ensure _compute_reward uses the version focused on high User SINR and good detection (from "v5" or similar)
-        reward = self._compute_reward(next_state) 
-        self.current_step += 1
-
-        terminated = False
-        truncated = False
-
-        if self.current_step >= self.max_steps_per_episode:
-            truncated = True # Standard Gym way to indicate time limit reached
-
-        # --- MODIFIED/RELAXED TERMINATION CONDITIONS ---
-        if self._is_beam_stolen(next_state): 
-            terminated = True
-            # The reward for beam stolen is now primarily handled in _compute_reward by adding a large negative value
-            # or can be a fixed large penalty here if not already fully accounted for in _compute_reward.
-            # The previous code had `reward -= 50` here. We ensure the reward function covers this.
-            # For clarity, if _is_beam_stolen implies a large penalty in _compute_reward, no need to double penalize.
-            # However, if it's just a flag, then a penalty here is needed.
-            # Assuming reward function handles the immediate penalty. This just flags termination.
-            logging.info(f"TERMINATED due to BEAM STOLEN.")
-
-
-        # MODIFICATION 1: More lenient SINR threshold for termination
-        if next_state[0] < -20.0: # Changed from -15.0 (which was from -10.0) to -20.0
-            if not terminated: 
-                # Penalty for very low SINR is already handled by the reward function.
-                # Avoid large additional penalties here that might mask learning signals.
-                # A small additional fixed penalty for termination itself might be okay, or none.
-                # reward -= 5 
-                terminated = True
-                logging.info(f"TERMINATED due to very low SINR: {next_state[0]:.2f} dB.")
-        
-        # MODIFICATION 2: "Attacker too close and not detected" termination is COMMENTED OUT
-        # Let the reward function (specifically `missed_penalty`) handle this.
-        """
-        bs_pos_np = self.bs_position.numpy()[0,:2]
-        attacker_pos_np = self.attacker_position.numpy()[0,:2]
-        user_pos_np = self.user_position.numpy()[0,:2] 
-        dist_attacker_bs = np.linalg.norm(attacker_pos_np - bs_pos_np)
-        dist_attacker_user = np.linalg.norm(attacker_pos_np - user_pos_np)
-
-        if (dist_attacker_bs < 10.0 or dist_attacker_user < 10.0) and next_state[4] < 0.5 :
-            if not terminated: reward -= 25 # Or whatever penalty was decided
-            terminated = True
-            logging.info(f"TERMINATED: Attacker too close and not detected.")
-        """
-        return next_state, reward, terminated, truncated, {}
 
     def _is_beam_stolen(self, current_obs_state):
         sinr_user = current_obs_state[0]
@@ -489,74 +471,112 @@ class MmWaveISACEnv(gym.Env):
                 logging.info(f"BEAM STOLEN: AngleDiff={np.rad2deg(angle_diff_az):.1f}deg, UserSINR={sinr_user:.1f}dB, AttRange={detected_attacker_range_m:.1f}m")
                 return True
         return False
-
+    @tf.function
     def _compute_reward(self, current_obs_state):
-        sinr_user = current_obs_state[0]
-        beam_az_rad = current_obs_state[1]
-        detected_attacker_az_rad = current_obs_state[2]
-        detected_attacker_range_m = current_obs_state[3]
-        detection_conf = current_obs_state[4]
-        true_attacker_range = current_obs_state[5]
-        true_attacker_azimuth = current_obs_state[6]
+        # The input current_obs_state is a NumPy array.
+        # We can convert it to a tensor to perform graph-compatible calculations if needed,
+        # but for now, we only need to fix the internal .numpy() calls.
+        
+        # Convert NumPy state back to a tensor for TF operations
+        state_tensor = tf.convert_to_tensor(current_obs_state, dtype=tf.float32)
+
+        sinr_user = state_tensor[0]
+        beam_az_rad = state_tensor[1]
+        detected_attacker_az_rad = state_tensor[2]
+        detected_attacker_range_m = state_tensor[3]
+        detection_conf = state_tensor[4]
+        true_attacker_range = state_tensor[5]
+        true_attacker_azimuth = state_tensor[6]
 
         # --- SINR-based Reward ---
-        base_reward_sinr = 0.0
-        if sinr_user > 15.0:
-            base_reward_sinr = 20.0 + (sinr_user - 15.0) * 1.0
-        elif sinr_user > 10.0:
-            base_reward_sinr = 10.0 + (sinr_user - 10.0) * 0.8
-        elif sinr_user > 0.0:
-            base_reward_sinr = sinr_user * 1.0
-        else: # sinr_user <= 0
-            base_reward_sinr = sinr_user * 1.5
-
+        # Using tf.where for conditional reward calculation
+        base_reward_sinr = tf.cond(
+            sinr_user > 15.0,
+            lambda: 20.0 + (sinr_user - 15.0) * 1.0,
+            lambda: tf.cond(
+                sinr_user > 10.0,
+                lambda: 10.0 + (sinr_user - 10.0) * 0.8,
+                lambda: tf.cond(
+                    sinr_user > 0.0,
+                    lambda: sinr_user * 1.0,
+                    lambda: sinr_user * 1.5
+                )
+            )
+        )
         reward = base_reward_sinr
-        # logging.debug(f"Step {self.current_step}, Initial SINR reward: {reward:.2f} for SINR: {sinr_user:.2f}")
 
         # --- Detection-based Reward/Penalty ---
-        if detection_conf > 0.7 and detected_attacker_range_m > 0: # Confident detection
+        # Note: self.user_position and self.bs_position are tf.Variables, already tensors.
+        # No need to call .numpy() on them.
+        user_vector = self.user_position[0] - self.bs_position[0]
+        true_user_azimuth = tf.math.atan2(user_vector[1], user_vector[0])
+        
+        # Use tf.where to apply detection-based rewards/penalties
+        def detection_logic():
             detection_bonus = 10.0 * detection_conf
-            reward += detection_bonus
-            # logging.debug(f"Step {self.current_step}, Detection bonus: {detection_bonus:.2f}, Reward now: {reward:.2f}")
-
-            user_vector = self.user_position.numpy()[0] - self.bs_position.numpy()[0]
-            true_user_azimuth = np.arctan2(user_vector[1], user_vector[0])
-            angle_diff_beam_user = abs(beam_az_rad - true_user_azimuth)
-            angle_diff_beam_user = min(angle_diff_beam_user, 2 * np.pi - angle_diff_beam_user)
+            
+            angle_diff_beam_user = tf.abs(beam_az_rad - true_user_azimuth)
+            angle_diff_beam_user = tf.minimum(angle_diff_beam_user, 2.0 * np.pi - angle_diff_beam_user)
             misalignment_penalty_user = (angle_diff_beam_user / np.pi) * 10.0
-            reward -= misalignment_penalty_user
-            # logging.debug(f"Step {self.current_step}, User misalignment penalty: {-misalignment_penalty_user:.2f}, Reward now: {reward:.2f}")
-
-            doa_error_rad = abs(detected_attacker_az_rad - true_attacker_azimuth)
-            doa_error_rad = min(doa_error_rad, 2*np.pi - doa_error_rad)
+            
+            doa_error_rad = tf.abs(detected_attacker_az_rad - true_attacker_azimuth)
+            doa_error_rad = tf.minimum(doa_error_rad, 2.0 * np.pi - doa_error_rad)
             accuracy_bonus = (1.0 - doa_error_rad / np.pi) * 5.0 * detection_conf
-            reward += accuracy_bonus
-            # logging.debug(f"Step {self.current_step}, DOA accuracy bonus: {accuracy_bonus:.2f}, Reward now: {reward:.2f}")
+            
+            return detection_bonus - misalignment_penalty_user + accuracy_bonus
 
-        elif true_attacker_range < self.sensing_range_max * 0.75 :
-            missed_penalty = 15.0
-            reward -= missed_penalty
-            # logging.debug(f"Step {self.current_step}, Missed nearby attacker penalty: {-missed_penalty:.2f}, Reward now: {reward:.2f}")
+        def no_detection_logic():
+            missed_penalty = tf.cond(
+                true_attacker_range < self.sensing_range_max * 0.75,
+                lambda: tf.constant(-15.0),
+                lambda: tf.constant(0.0)
+            )
+            return missed_penalty
+
+        detection_reward_penalty = tf.cond(
+            tf.logical_and(detection_conf > 0.7, detected_attacker_range_m > 0),
+            detection_logic,
+            no_detection_logic
+        )
+        reward += detection_reward_penalty
 
         # --- ISAC Effort Penalty/Management ---
-        if self.current_isac_effort > 0.9:
-            effort_penalty_high = (self.current_isac_effort - 0.9) * 15.0
-            reward -= effort_penalty_high
-            # logging.debug(f"Step {self.current_step}, High ISAC effort penalty: {-effort_penalty_high:.2f}, Reward now: {reward:.2f}")
-        elif self.current_isac_effort < 0.4 and (true_attacker_range < self.sensing_range_max * 0.75 and detection_conf < 0.5) :
-            effort_penalty_low_missed = 7.5
-            reward -= effort_penalty_low_missed
-            # logging.debug(f"Step {self.current_step}, Low ISAC effort on missed attacker penalty: {-effort_penalty_low_missed:.2f}, Reward now: {reward:.2f}")
+        isac_effort = tf.cast(self.current_isac_effort, dtype=tf.float32)
+        effort_penalty_high = tf.cond(
+            isac_effort > 0.9,
+            lambda: (isac_effort - 0.9) * -15.0,
+            lambda: 0.0
+        )
+        reward += effort_penalty_high
+        
+        effort_penalty_low_missed = tf.cond(
+            tf.logical_and(isac_effort < 0.4, 
+                           tf.logical_and(true_attacker_range < self.sensing_range_max * 0.75,
+                                          detection_conf < 0.5)),
+            lambda: tf.constant(-7.5),
+            lambda: tf.constant(0.0)
+        )
+        reward += effort_penalty_low_missed
 
         # --- Penalty for beam pointing towards actual attacker if attacker is close ---
-        if true_attacker_range < self.sensing_range_max * 0.6:
-            angle_diff_beam_true_attacker = abs(beam_az_rad - true_attacker_azimuth)
-            angle_diff_beam_true_attacker = min(angle_diff_beam_true_attacker, 2 * np.pi - angle_diff_beam_true_attacker)
-            if angle_diff_beam_true_attacker < np.deg2rad(25):
-                penalty_beam_on_attacker = (1.0 - angle_diff_beam_true_attacker / np.pi) * 7.5 * (1.2 - detection_conf)
-                reward -= penalty_beam_on_attacker
-                # logging.debug(f"Step {self.current_step}, Beam on true attacker penalty: {-penalty_beam_on_attacker:.2f}, Reward now: {reward:.2f}")
-        # logging.debug(f"Step {self.current_step}, Final reward for this step: {reward:.2f}")
+        def beam_on_attacker_penalty_logic():
+            angle_diff_beam_true_attacker = tf.abs(beam_az_rad - true_attacker_azimuth)
+            angle_diff_beam_true_attacker = tf.minimum(angle_diff_beam_true_attacker, 2.0 * np.pi - angle_diff_beam_true_attacker)
+            
+            penalty = tf.cond(
+                angle_diff_beam_true_attacker < np.deg2rad(25),
+                lambda: (1.0 - angle_diff_beam_true_attacker / np.pi) * -7.5 * (1.2 - detection_conf),
+                lambda: 0.0
+            )
+            return penalty
+
+        beam_on_attacker_penalty = tf.cond(
+            true_attacker_range < self.sensing_range_max * 0.6,
+            beam_on_attacker_penalty_logic,
+            lambda: 0.0
+        )
+        reward += beam_on_attacker_penalty
+        
         return float(reward)
 
     def render(self, mode='human'):
@@ -679,7 +699,7 @@ def run_simulation():
     action_n = env.action_space.n
 
     # MODIFICATION: Increase episodes and adjust epsilon decay steps
-    episodes = 1000 # Significantly increased episodes
+    episodes = 100 # Significantly increased episodes
     
     # Estimate average steps per episode based on previous run (e.g., ~7 steps if not improved much)
     # If we expect it to improve to, say, 20-25 steps on average with more lenient termination:

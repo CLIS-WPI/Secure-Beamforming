@@ -235,20 +235,20 @@ class MmWaveISACEnv(gym.Env):
         
         return sv
     def step(self, action_idx):
-        # این لاگ مشکلی ایجاد نمی‌کند چون این تابع با @tf.function تزئین نشده
         logging.debug(f"Entering step with action_idx: {action_idx}")
-        current_az_val = self.current_beam_angles_tf.numpy()[0]
+        current_az_val = self.current_beam_angles_tf[0]
 
         if action_idx == 0: current_az_val -= self.beam_angle_delta_rad
         elif action_idx == 1: current_az_val += self.beam_angle_delta_rad
         elif action_idx == 2: pass # Hold beam
         elif action_idx == 3: self.current_isac_effort += 0.2
         elif action_idx == 4: self.current_isac_effort -= 0.2
-
+        
         self.current_isac_effort = np.clip(self.current_isac_effort, 0.3, 1.0)
-        current_az_val = np.clip(current_az_val, -np.pi, np.pi)
+        current_az_val = tf.clip_by_value(current_az_val, -np.pi, np.pi)
         self.current_beam_angles_tf.assign([current_az_val])
 
+        # --- Minor position perturbations (kept as numpy for simplicity, overhead is minimal) ---
         user_move_dist = self.np_random.uniform(0, 0.1)
         user_move_angle = self.np_random.uniform(-np.pi, np.pi)
         user_pos_offset = np.array([[user_move_dist * np.cos(user_move_angle), user_move_dist * np.sin(user_move_angle), 0.0]], dtype=np.float32)
@@ -259,33 +259,37 @@ class MmWaveISACEnv(gym.Env):
         attacker_pos_offset = np.array([[attacker_move_dist * np.cos(attacker_move_angle), attacker_move_dist * np.sin(attacker_move_angle), 0.0]], dtype=np.float32)
         self.attacker_position.assign_add(tf.constant(attacker_pos_offset, dtype=tf.float32))
 
-        # 1. دریافت وضعیت بعدی به صورت تنسور از تابع بهینه شده
+        # 1. Get the next state as a tensor.
         next_state_tensor = self._get_state()
         
-        # 2. تبدیل تنسور به آرایه NumPy در اینجا (خارج از محدوده @tf.function)
-        next_state = next_state_tensor.numpy()
+        # 2. Compute reward and check terminal conditions using tensors.
+        #    The reward function _compute_reward MUST be modified to accept a tensor.
+        reward_tensor = self._compute_reward(next_state_tensor) 
         
-        # 3. استفاده از آرایه NumPy برای بقیه محاسبات
-        reward = self._compute_reward(next_state) 
         self.current_step += 1
-
-        terminated = False
+        
+        # 3. Check termination conditions using tensors
         truncated = False
-
         if self.current_step >= self.max_steps_per_episode:
             truncated = True
 
-        # بررسی شرایط اتمام با استفاده از آرایه NumPy
-        if self._is_beam_stolen(next_state): 
-            terminated = True
-            logging.info(f"TERMINATED due to BEAM STOLEN.")
-
-        if next_state[0] < -20.0:
-            if not terminated: 
-                terminated = True
-                logging.info(f"TERMINATED due to very low SINR: {next_state[0]:.2f} dB.")
+        is_stolen_tensor = self._is_beam_stolen(next_state_tensor)
+        sinr_too_low_tensor = tf.less(next_state_tensor[0], -20.0)
         
-        return next_state, reward, terminated, truncated, {}
+        terminated_tensor = tf.logical_or(is_stolen_tensor, sinr_too_low_tensor)
+
+        # 4. Convert tensors to Python/NumPy types ONLY for the final return value.
+        next_state_np = next_state_tensor.numpy()
+        reward = float(reward_tensor.numpy())
+        terminated = bool(terminated_tensor.numpy())
+
+        # Logging based on tensor values before conversion
+        if is_stolen_tensor:
+            logging.info(f"TERMINATED due to BEAM STOLEN.")
+        elif sinr_too_low_tensor:
+            logging.info(f"TERMINATED due to very low SINR: {next_state_np[0]:.2f} dB.")
+
+        return next_state_np, reward, terminated, truncated, {}
     
     @tf.function
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
@@ -454,32 +458,45 @@ class MmWaveISACEnv(gym.Env):
         logging.debug(f"reset returning obs shape: {obs.shape}")
         return obs, info
 
-    def _is_beam_stolen(self, current_obs_state):
-        sinr_user = current_obs_state[0]
-        beam_az_rad = current_obs_state[1]
-        detected_attacker_az_rad = current_obs_state[2]
-        detected_attacker_range_m = current_obs_state[3]
-        detection_confidence = current_obs_state[4]
-
-        # Original from v5 was: if detection_confidence > 0.7 and 0 < detected_attacker_range_m < 75:
-        # Original from v5 was: if angle_diff_az < np.deg2rad(15) and sinr_user < -10.0:
-        if detection_confidence > 0.7 and 0 < detected_attacker_range_m < 75:
-            angle_diff_az = abs(beam_az_rad - detected_attacker_az_rad)
-            angle_diff_az = min(angle_diff_az, 2*np.pi - angle_diff_az)
-            # MODIFICATION: Make SINR threshold for beam stealing slightly more lenient
-            if angle_diff_az < np.deg2rad(15) and sinr_user < -15.0: # Changed from -10.0
-                logging.info(f"BEAM STOLEN: AngleDiff={np.rad2deg(angle_diff_az):.1f}deg, UserSINR={sinr_user:.1f}dB, AttRange={detected_attacker_range_m:.1f}m")
-                return True
-        return False
+    # NEW: This function is rewritten to work directly with TensorFlow tensors.
     @tf.function
-    def _compute_reward(self, current_obs_state):
-        # The input current_obs_state is a NumPy array.
-        # We can convert it to a tensor to perform graph-compatible calculations if needed,
-        # but for now, we only need to fix the internal .numpy() calls.
-        
-        # Convert NumPy state back to a tensor for TF operations
-        state_tensor = tf.convert_to_tensor(current_obs_state, dtype=tf.float32)
+    def _is_beam_stolen(self, current_obs_state_tensor):
+        """Checks for beam stealing condition using TensorFlow operations."""
+        # Unpack the state tensor
+        sinr_user = current_obs_state_tensor[0]
+        beam_az_rad = current_obs_state_tensor[1]
+        detected_attacker_az_rad = current_obs_state_tensor[2]
+        detected_attacker_range_m = current_obs_state_tensor[3]
+        detection_confidence = current_obs_state_tensor[4]
 
+        # Beam stealing conditions
+        cond1 = tf.greater(detection_confidence, 0.7)
+        cond2 = tf.greater(detected_attacker_range_m, 0.0)
+        cond3 = tf.less(detected_attacker_range_m, 75.0)
+        
+        # Angle difference calculation with tensors
+        angle_diff_az = tf.abs(beam_az_rad - detected_attacker_az_rad)
+        angle_diff_az = tf.minimum(angle_diff_az, 2.0 * np.pi - angle_diff_az)
+        
+        # Using a small constant for angle comparison
+        angle_threshold_rad = tf.constant(np.deg2rad(20.0), dtype=tf.float32) # Increased threshold slightly for stability
+        cond4 = tf.less(angle_diff_az, angle_threshold_rad)
+        
+        cond5 = tf.less(sinr_user, -5.0) # From paper definition
+
+        is_stolen = tf.logical_and(cond1, 
+                        tf.logical_and(cond2, 
+                            tf.logical_and(cond3, 
+                                tf.logical_and(cond4, cond5))))
+        
+        return is_stolen
+    
+    # CHANGED: This function is now modified to accept a tensor directly.
+    @tf.function
+    def _compute_reward(self, state_tensor): # Renamed input for clarity
+        # The input 'state_tensor' is now a TensorFlow tensor.
+        # The tf.convert_to_tensor call is no longer needed.
+        
         sinr_user = state_tensor[0]
         beam_az_rad = state_tensor[1]
         detected_attacker_az_rad = state_tensor[2]
@@ -487,9 +504,11 @@ class MmWaveISACEnv(gym.Env):
         detection_conf = state_tensor[4]
         true_attacker_range = state_tensor[5]
         true_attacker_azimuth = state_tensor[6]
-
+        
+        # --- The rest of the function's logic remains the same ---
+        # --- as it already uses TensorFlow operations.           ---
+        
         # --- SINR-based Reward ---
-        # Using tf.where for conditional reward calculation
         base_reward_sinr = tf.cond(
             sinr_user > 15.0,
             lambda: 20.0 + (sinr_user - 15.0) * 1.0,
@@ -506,12 +525,9 @@ class MmWaveISACEnv(gym.Env):
         reward = base_reward_sinr
 
         # --- Detection-based Reward/Penalty ---
-        # Note: self.user_position and self.bs_position are tf.Variables, already tensors.
-        # No need to call .numpy() on them.
         user_vector = self.user_position[0] - self.bs_position[0]
         true_user_azimuth = tf.math.atan2(user_vector[1], user_vector[0])
         
-        # Use tf.where to apply detection-based rewards/penalties
         def detection_logic():
             detection_bonus = 10.0 * detection_conf
             
@@ -577,7 +593,7 @@ class MmWaveISACEnv(gym.Env):
         )
         reward += beam_on_attacker_penalty
         
-        return float(reward)
+        return reward # Return the final tensor
 
     def render(self, mode='human'):
         if mode == 'human':
@@ -596,41 +612,45 @@ class MmWaveISACEnv(gym.Env):
         pass
 
 # DRL Agent (Double DQN)
+# DRL Agent (Double DQN) with tf.data pipeline
 class DoubleDQNAgent:
-    def __init__(self, state_dim, action_n, learning_rate=0.0001, gamma=0.99,
-                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # MODIFIED: Parameter name for clarity
+    # CHANGED: __init__ now prepares for a custom training loop
+    def __init__(self, state_dim, action_n, learning_rate=3e-4, gamma=0.99, # Matched paper LR
+                 epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=15000): # Matched paper decay
         self.state_dim = int(state_dim)
         self.action_n = action_n
-        self.memory = deque(maxlen=50000)
-        self.gamma = gamma
+        self.memory = deque(maxlen=50000) # Matched paper
+        self.gamma = tf.constant(gamma, dtype=tf.float32)
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end
+        self.batch_size = 32 # Matched paper
 
-        # MODIFIED: Epsilon decay calculation and new counter for environment steps
-        if epsilon_decay_env_steps > 0: # Avoid division by zero
+        if epsilon_decay_env_steps > 0:
             self.epsilon_decay_val = (epsilon_start - epsilon_end) / epsilon_decay_env_steps
         else:
-            self.epsilon_decay_val = 0 # No decay if steps is zero
-        self.env_steps_count = 0  # This will track calls to act()
-        # self.epsilon_decay = (epsilon_start - epsilon_end) / epsilon_decay_steps # REMOVED THIS LINE
+            self.epsilon_decay_val = 0
+        self.env_steps_count = 0
 
-        self.learning_rate = learning_rate
-        self.batch_size = 64 # As per previous successful setup
+        # NEW: Prepare optimizer and loss function for the custom training loop
+        self.optimizer = tf.keras.optimizers.Adam(learning_rate=learning_rate)
+        self.loss_function = tf.keras.losses.Huber()
 
+        # Build models
         self.model = self._build_model()
         self.target_model = self._build_model()
         self.update_target_model()
 
+    # CHANGED: Model compilation is no longer needed here
     def _build_model(self):
-        # Using tf.keras consistently as per your top block
+        # Matched paper architecture
         model = tf.keras.Sequential([
             tf.keras.layers.Input(shape=(self.state_dim,)),
+            tf.keras.layers.Dense(256, activation='relu'),
             tf.keras.layers.Dense(128, activation='relu'),
             tf.keras.layers.Dense(64, activation='relu'),
-            tf.keras.layers.Dense(self.action_n, activation='linear')
+            tf.keras.layers.Dense(self.action_n, activation='linear', dtype=tf.float32) # Ensure output is float32
         ])
-        model.compile(loss=tf.keras.losses.Huber(),
-                      optimizer=tf.keras.optimizers.Adam(learning_rate=self.learning_rate))
+        # The model is NOT compiled here anymore.
         return model
 
     def update_target_model(self):
@@ -640,49 +660,70 @@ class DoubleDQNAgent:
         self.memory.append((state, action_idx, reward, next_state, done))
 
     def act(self, state):
-        self.env_steps_count += 1 # MODIFIED: Increment environment step counter here
-        action = 0
+        self.env_steps_count += 1
         if np.random.rand() <= self.epsilon:
             action = random.randrange(self.action_n)
         else:
-            if state.ndim == 1: state_for_pred = np.expand_dims(state, axis=0)
-            else: state_for_pred = state
-            act_values = self.model.predict(state_for_pred, verbose=0)
-            action = np.argmax(act_values[0])
+            state_tensor = tf.convert_to_tensor(state)
+            state_tensor = tf.expand_dims(state_tensor, 0)
+            act_values = self.model(state_tensor, training=False)
+            action = tf.argmax(act_values[0]).numpy()
 
-        # MODIFIED: Decay epsilon here, based on environment steps
         if self.epsilon > self.epsilon_end:
             self.epsilon -= self.epsilon_decay_val
-            if self.epsilon < self.epsilon_end: # Clip at epsilon_end
-                self.epsilon = self.epsilon_end
         return action
 
+    # NEW: The core training logic is now in its own @tf.function for max speed.
+    @tf.function
+    def _train_step(self, states, actions, rewards, next_states, dones):
+        """Performs a single gradient update step."""
+        # Use the online network to find the best action for the next state
+        next_actions_online = tf.argmax(self.model(next_states, training=False), axis=1, output_type=tf.int32)
+        
+        # Use the target network to evaluate the Q-value of that best action
+        # We need to create indices for tf.gather_nd
+        next_actions_indices = tf.stack([tf.range(self.batch_size, dtype=tf.int32), next_actions_online], axis=1)
+        q_values_next_target = self.target_model(next_states, training=False)
+        q_values_next_state_selected = tf.gather_nd(q_values_next_target, next_actions_indices)
+
+        # Calculate the TD Target
+        td_targets = rewards + self.gamma * q_values_next_state_selected * (1.0 - tf.cast(dones, tf.float32))
+
+        # Use GradientTape to track gradients
+        with tf.GradientTape() as tape:
+            # Get the Q-values for the actions that were actually taken
+            all_q_values = self.model(states, training=True)
+            action_indices = tf.stack([tf.range(self.batch_size, dtype=tf.int32), actions], axis=1)
+            q_values_for_actions_taken = tf.gather_nd(all_q_values, action_indices)
+
+            # Calculate the loss
+            loss = self.loss_function(td_targets, q_values_for_actions_taken)
+
+        # Calculate and apply gradients
+        gradients = tape.gradient(loss, self.model.trainable_variables)
+        self.optimizer.apply_gradients(zip(gradients, self.model.trainable_variables))
+        
+        return loss
+
+    # CHANGED: Replay now uses the tf.data pipeline and calls the _train_step function.
     def replay(self):
+        """Samples from memory and triggers the training step."""
         if len(self.memory) < self.batch_size:
             return 0.0
 
-        minibatch_indices = np.random.choice(len(self.memory), self.batch_size, replace=False)
-        minibatch = [self.memory[i] for i in minibatch_indices]
+        minibatch = random.sample(self.memory, self.batch_size)
+        
+        # Convert to tensors
+        states = tf.convert_to_tensor([transition[0] for transition in minibatch], dtype=tf.float32)
+        actions = tf.convert_to_tensor([transition[1] for transition in minibatch], dtype=tf.int32)
+        rewards = tf.convert_to_tensor([transition[2] for transition in minibatch], dtype=tf.float32)
+        next_states = tf.convert_to_tensor([transition[3] for transition in minibatch], dtype=tf.float32)
+        dones = tf.convert_to_tensor([transition[4] for transition in minibatch], dtype=tf.bool)
+        
+        # Perform the training step
+        loss = self._train_step(states, actions, rewards, next_states, dones)
 
-        states = np.array([transition[0] for transition in minibatch])
-        actions = np.array([transition[1] for transition in minibatch])
-        rewards = np.array([transition[2] for transition in minibatch])
-        next_states = np.array([transition[3] for transition in minibatch])
-        dones = np.array([transition[4] for transition in minibatch])
-
-        next_actions_online = np.argmax(self.model.predict(next_states, verbose=0), axis=1)
-        q_values_next_target = self.target_model.predict(next_states, verbose=0)
-        q_values_next_state_selected = q_values_next_target[np.arange(self.batch_size), next_actions_online]
-
-        targets_for_taken_actions = rewards + self.gamma * q_values_next_state_selected * (1 - dones)
-        current_q_values_all_actions = self.model.predict(states, verbose=0)
-
-        for i in range(self.batch_size):
-            current_q_values_all_actions[i, actions[i]] = targets_for_taken_actions[i]
-
-        history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0, batch_size=self.batch_size)
-
-        return history.history['loss'][0]
+        return loss.numpy()
 
     def save(self, name):
         try:

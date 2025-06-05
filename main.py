@@ -740,7 +740,7 @@ def run_simulation():
     action_n = env.action_space.n
 
     # MODIFICATION: Increase episodes and adjust epsilon decay steps
-    episodes = 100 # Significantly increased episodes
+    episodes = 500 # Significantly increased episodes
     
     # Estimate average steps per episode based on previous run (e.g., ~7 steps if not improved much)
     # If we expect it to improve to, say, 20-25 steps on average with more lenient termination:
@@ -868,7 +868,7 @@ def run_simulation():
     # --- Evaluation Phase ---
     # This section is modified for efficiency in Baseline Evaluation
     print("\n--- Starting Evaluation Phase ---", flush=True)
-    evaluation_episodes = 50  # You can adjust this for faster/slower testing
+    evaluation_episodes = 100  # You can adjust this for faster/slower testing
     evaluation_steps = env.max_steps_per_episode # Max steps per evaluation episode
 
     eval_epsilon_backup = agent.epsilon

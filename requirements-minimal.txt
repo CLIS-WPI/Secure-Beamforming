@@ -1,5 +1,7 @@
 # requirements-minimal.txt
-sionna==1.0.2
+sionna
 gym
 pandas
 matplotlib
+tensorboard
+tensorboard-plugin-profile

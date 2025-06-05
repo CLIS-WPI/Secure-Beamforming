@@ -2,10 +2,10 @@
 # FINAL DEFINITIVE TOP BLOCK - REPLACE ALL EXISTING IMPORTS WITH THIS
 # =====================================================================
 import os
-import sys # Moved to top
-import time # Moved to top for the NameError
-import random # Moved to top
-import logging # Moved to top
+import sys 
+import time 
+import random 
+import logging 
 
 # --- Environment Variable Setup (VERY FIRST THING) ---
 # Reduce TensorFlow log spam
@@ -33,7 +33,7 @@ print("--- Main Script: GPU Initialization Complete ---")
 # --- Other Core Libraries (THIRD THING) ---
 import numpy as np
 import pandas as pd
-from collections import deque # Moved to top
+from collections import deque 
 
 # --- Gym Environment Library (FOURTH THING) ---
 import gym
@@ -250,7 +250,7 @@ class MmWaveISACEnv(gym.Env):
         except Exception as e:
             logging.error(f"Error in _get_steering_vector: {e}")
             return tf.ones([self.num_bs_antennas], dtype=tf.complex64)
-
+    @tf.function
     def _get_channel_and_powers(self, current_beam_angles_tf_in, user_pos_in, attacker_pos_in):
         logging.debug("Entering _get_channel_and_powers")
         try:
@@ -320,7 +320,7 @@ class MmWaveISACEnv(gym.Env):
         except Exception as e:
             logging.error(f"Error in _get_channel_and_powers: {e}")
             return tf.constant(1e-15, dtype=tf.float32), tf.constant(1e-15, dtype=tf.float32)
-
+    @tf.function
     def _get_state(self):
         logging.debug("Entering _get_state")
         try:
@@ -553,9 +553,9 @@ class MmWaveISACEnv(gym.Env):
             angle_diff_beam_true_attacker = abs(beam_az_rad - true_attacker_azimuth)
             angle_diff_beam_true_attacker = min(angle_diff_beam_true_attacker, 2 * np.pi - angle_diff_beam_true_attacker)
             if angle_diff_beam_true_attacker < np.deg2rad(25):
-                 penalty_beam_on_attacker = (1.0 - angle_diff_beam_true_attacker / np.pi) * 7.5 * (1.2 - detection_conf)
-                 reward -= penalty_beam_on_attacker
-                 # logging.debug(f"Step {self.current_step}, Beam on true attacker penalty: {-penalty_beam_on_attacker:.2f}, Reward now: {reward:.2f}")
+                penalty_beam_on_attacker = (1.0 - angle_diff_beam_true_attacker / np.pi) * 7.5 * (1.2 - detection_conf)
+                reward -= penalty_beam_on_attacker
+                # logging.debug(f"Step {self.current_step}, Beam on true attacker penalty: {-penalty_beam_on_attacker:.2f}, Reward now: {reward:.2f}")
         # logging.debug(f"Step {self.current_step}, Final reward for this step: {reward:.2f}")
         return float(reward)
 
@@ -586,7 +586,7 @@ class DoubleDQNAgent:
         self.gamma = gamma
         self.epsilon = epsilon_start
         self.epsilon_end = epsilon_end
-        
+
         # MODIFIED: Epsilon decay calculation and new counter for environment steps
         if epsilon_decay_env_steps > 0: # Avoid division by zero
             self.epsilon_decay_val = (epsilon_start - epsilon_end) / epsilon_decay_env_steps
@@ -622,7 +622,7 @@ class DoubleDQNAgent:
 
     def act(self, state):
         self.env_steps_count += 1 # MODIFIED: Increment environment step counter here
-        action = 0 
+        action = 0
         if np.random.rand() <= self.epsilon:
             action = random.randrange(self.action_n)
         else:
@@ -662,11 +662,6 @@ class DoubleDQNAgent:
             current_q_values_all_actions[i, actions[i]] = targets_for_taken_actions[i]
 
         history = self.model.fit(states, current_q_values_all_actions, epochs=1, verbose=0, batch_size=self.batch_size)
-        
-        # MODIFIED: Epsilon decay logic was REMOVED from here
-        # if self.epsilon > self.epsilon_end:
-        #     self.epsilon -= self.epsilon_decay # Incorrect variable name and logic place
-        #     self.epsilon = max(self.epsilon_end, self.epsilon)
 
         return history.history['loss'][0]
 
@@ -678,6 +673,7 @@ class DoubleDQNAgent:
             logging.error(f"Error saving model weights to {name}: {e}")
 
 # Main simulation function
+# Main simulation function
 def run_simulation():
     print("Starting DRL Simulation for Secure mmWave ISAC Beamforming...")
     env = MmWaveISACEnv()
@@ -685,7 +681,7 @@ def run_simulation():
     action_n = env.action_space.n
 
     # MODIFICATION: Increase episodes and adjust epsilon decay steps
-    episodes = 1500 # Significantly increased episodes
+    episodes = 50 # Significantly increased episodes
     
     # Estimate average steps per episode based on previous run (e.g., ~7 steps if not improved much)
     # If we expect it to improve to, say, 20-25 steps on average with more lenient termination:
@@ -704,14 +700,10 @@ def run_simulation():
                            epsilon_decay_env_steps=epsilon_decay_env_steps_val)
     logging.info(f"Agent initialized with episodes: {episodes}, epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
 
-    # ... (The rest of run_simulation remains as in the "v5" version I provided,
-    #      including step-level data logging, print frequencies, save frequencies, and evaluation phase) ...
-    # Change filenames for this new run (e.g., to v6)
-    # print_freq_episodes = 100 # Print less often for very long runs
-    # save_freq_episodes = 500  # Save less often
+
 
     target_update_freq_steps = 1000
-    print_freq_episodes = 100 # Adjusted for longer run
+    print_freq_episodes = 10 # Adjusted for longer run
     save_freq_episodes = 500  # Adjusted for longer run
     
     episode_data = []
@@ -815,47 +807,53 @@ def run_simulation():
     print("Step-level detection data saved to 'step_level_detection_data_v6.csv'")
 
     # --- Evaluation Phase ---
-    # (This part remains the same as the "v5" code, ensure evaluation_episodes is set to 50)
-    print("\n--- Starting Evaluation Phase ---")
-    evaluation_episodes = 50 
-    evaluation_steps = env.max_steps_per_episode
+    # This section is modified for efficiency in Baseline Evaluation
+    print("\n--- Starting Evaluation Phase ---", flush=True)
+    evaluation_episodes = 50  # You can adjust this for faster/slower testing
+    evaluation_steps = env.max_steps_per_episode # Max steps per evaluation episode
 
     eval_epsilon_backup = agent.epsilon
-    agent.epsilon = 0.0 # Greedy evaluation
-    print(f"Agent epsilon set to {agent.epsilon} for evaluation.")
+    agent.epsilon = 0.0 # Greedy evaluation (no random actions)
+    print(f"Agent epsilon set to {agent.epsilon} for evaluation.", flush=True)
 
     evaluation_data = []
     for i_eval in range(evaluation_episodes):
-        # Baseline Evaluation
+        # Baseline Evaluation (Optimized)
         baseline_sinrs_scenario = []
         baseline_detections_scenario = []
-        for _i_b_step in range(evaluation_steps): 
-            if _i_b_step == 0: 
-                state_b, _ = env.reset() 
-            else: 
-                 _, _ = env.reset()
-            env.current_beam_angles_tf.assign([0.0]) 
-            env.current_isac_effort = 0.7 
-            baseline_current_state_snapshot = env._get_state()
-            baseline_sinrs_scenario.append(baseline_current_state_snapshot[0])
-            b_conf = baseline_current_state_snapshot[4]
-            b_range = baseline_current_state_snapshot[3]
+        for _i_b_step in range(evaluation_steps):
+            # env.reset() already sets beam to 0.0, ISAC effort to 0.7,
+            # randomizes positions, and returns the state.
+            # The state_b variable directly holds the observation from this reset.
+            state_b, _ = env.reset()
+            
+            # The following lines from your original code are redundant and removed:
+            # env.current_beam_angles_tf.assign([0.0])
+            # env.current_isac_effort = 0.7
+            # baseline_current_state_snapshot = env._get_state()
+
+            # Use state_b (the observation returned by env.reset()) directly
+            baseline_sinrs_scenario.append(state_b[0]) # User SINR
+            b_conf = state_b[4]                         # Detection confidence
+            b_range = state_b[3]                        # Detected range
             baseline_detections_scenario.append(1 if (b_conf > 0.5 and 0 < b_range < 100) else 0)
 
         baseline_sinr = np.mean(baseline_sinrs_scenario) if baseline_sinrs_scenario else -30.0
         baseline_detected = 1 if np.any(baseline_detections_scenario) else 0
 
         # DRL Agent Evaluation
-        state_drl, _ = env.reset() 
+        state_drl, _ = env.reset() # Reset env for each DRL evaluation episode
         drl_sinrs_episode = []
         drl_detections_episode_conf = []
         drl_detected_attacker_ranges_episode = []
-        for _ in range(evaluation_steps):
-            action_idx_drl = agent.act(state_drl)
+        for _ in range(evaluation_steps): # Inner loop for DRL agent
+            action_idx_drl = agent.act(state_drl) # Agent acts greedily (epsilon = 0)
             next_state_drl, _, terminated_drl, truncated_drl, _ = env.step(action_idx_drl)
+            
             drl_sinrs_episode.append(next_state_drl[0])
-            drl_detections_episode_conf.append(next_state_drl[4])
-            drl_detected_attacker_ranges_episode.append(next_state_drl[3])
+            drl_detections_episode_conf.append(next_state_drl[4]) # Store confidence
+            drl_detected_attacker_ranges_episode.append(next_state_drl[3]) # Store detected range
+            
             state_drl = next_state_drl
             if terminated_drl or truncated_drl:
                 break
@@ -863,7 +861,7 @@ def run_simulation():
         avg_drl_sinr_eval = np.mean(drl_sinrs_episode) if drl_sinrs_episode else -30.0
         drl_detected_in_eval_episode = 0
         for conf, drange in zip(drl_detections_episode_conf, drl_detected_attacker_ranges_episode):
-            if conf > 0.5 and 0 < drange < 100:
+            if conf > 0.5 and 0 < drange < 100: # Consistent detection criteria
                 drl_detected_in_eval_episode = 1
                 break
 
@@ -874,26 +872,28 @@ def run_simulation():
             'Baseline_Detected_Binary': baseline_detected,
             'DRL_Detected_In_Episode_Binary': drl_detected_in_eval_episode
         })
-        if (i_eval + 1) % 10 == 0 or i_eval == evaluation_episodes -1 :
-             print(f"Eval Scenario {i_eval+1}/{evaluation_episodes}: Baseline SINR={baseline_sinr:.2f}, DRL SINR={avg_drl_sinr_eval:.2f}, Baseline Det={baseline_detected}, DRL Det={drl_detected_in_eval_episode}")
+        
+        # Print progress during evaluation
+        if (i_eval + 1) % 10 == 0 or (i_eval + 1) == evaluation_episodes :
+            print(f"Eval Scenario {i_eval+1}/{evaluation_episodes}: Baseline SINR={baseline_sinr:.2f}, DRL SINR={avg_drl_sinr_eval:.2f}, Baseline Det={baseline_detected}, DRL Det={drl_detected_in_eval_episode}", flush=True)
 
-    agent.epsilon = eval_epsilon_backup
-    print(f"Agent epsilon restored to {agent.epsilon:.4f}.")
+    agent.epsilon = eval_epsilon_backup # Restore agent's original epsilon
+    print(f"Agent epsilon restored to {agent.epsilon:.4f}.", flush=True)
 
     df_eval = pd.DataFrame(evaluation_data)
-    df_eval.to_csv('evaluation_results_v6.csv', index=False) # New version name
-    print("Evaluation results saved to 'evaluation_results_v6.csv'")
+    df_eval.to_csv('evaluation_results_v6.csv', index=False)
+    print("Evaluation results saved to 'evaluation_results_v6.csv'", flush=True)
 
-    avg_baseline_sinr_overall = np.mean([d['Baseline_SINR'] for d in evaluation_data])
-    avg_drl_sinr_overall = np.mean([d['DRL_SINR_Avg_Eval'] for d in evaluation_data])
-    avg_baseline_detection_overall = np.mean([d['Baseline_Detected_Binary'] for d in evaluation_data]) * 100
-    avg_drl_detection_overall = np.mean([d['DRL_Detected_In_Episode_Binary'] for d in evaluation_data]) * 100
+    avg_baseline_sinr_overall = np.mean([d['Baseline_SINR'] for d in evaluation_data]) if evaluation_data else -30.0
+    avg_drl_sinr_overall = np.mean([d['DRL_SINR_Avg_Eval'] for d in evaluation_data]) if evaluation_data else -30.0
+    avg_baseline_detection_overall = np.mean([d['Baseline_Detected_Binary'] for d in evaluation_data]) * 100 if evaluation_data else 0.0
+    avg_drl_detection_overall = np.mean([d['DRL_Detected_In_Episode_Binary'] for d in evaluation_data]) * 100 if evaluation_data else 0.0
 
-    print(f"\n--- Overall Evaluation Averages (for {evaluation_episodes} scenarios) ---")
-    print(f"Average Baseline SINR: {avg_baseline_sinr_overall:.2f} dB")
-    print(f"Average DRL SINR (greedy): {avg_drl_sinr_overall:.2f} dB")
-    print(f"Baseline Detection Rate: {avg_baseline_detection_overall:.2f}%")
-    print(f"DRL Detection Rate (greedy, detected in episode): {avg_drl_detection_overall:.2f}%")
+    print(f"\n--- Overall Evaluation Averages (for {evaluation_episodes} scenarios) ---", flush=True)
+    print(f"Average Baseline SINR: {avg_baseline_sinr_overall:.2f} dB", flush=True)
+    print(f"Average DRL SINR (greedy): {avg_drl_sinr_overall:.2f} dB", flush=True)
+    print(f"Baseline Detection Rate: {avg_baseline_detection_overall:.2f}%", flush=True)
+    print(f"DRL Detection Rate (greedy, detected in episode): {avg_drl_detection_overall:.2f}%", flush=True)
     
     # Plotting section (remains the same, ensure df_episode_data is used for training plots)
     try:
@@ -946,4 +946,4 @@ def run_simulation():
 if __name__ == "__main__":
     print("--- Script execution started by __main__ block ---")
     run_simulation()
-    print("--- Script execution finished ---")    
+    print("--- Script execution finished ---")

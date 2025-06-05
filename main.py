@@ -189,7 +189,7 @@ class MmWaveISACEnv(gym.Env):
         self.current_beam_angles_tf = tf.Variable([0.0], dtype=tf.float32)
         self.current_isac_effort = 0.7
         self.current_step = 0
-
+    @tf.function
     def _get_steering_vector(self, angles_rad_tf):
         logging.debug("Entering _get_steering_vector")
         try:
@@ -576,7 +576,6 @@ class MmWaveISACEnv(gym.Env):
         pass
 
 # DRL Agent (Double DQN)
-# DRL Agent (Double DQN)
 class DoubleDQNAgent:
     def __init__(self, state_dim, action_n, learning_rate=0.0001, gamma=0.99,
                  epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=50000): # MODIFIED: Parameter name for clarity
@@ -673,7 +672,6 @@ class DoubleDQNAgent:
             logging.error(f"Error saving model weights to {name}: {e}")
 
 # Main simulation function
-# Main simulation function
 def run_simulation():
     print("Starting DRL Simulation for Secure mmWave ISAC Beamforming...")
     env = MmWaveISACEnv()
@@ -681,7 +679,7 @@ def run_simulation():
     action_n = env.action_space.n
 
     # MODIFICATION: Increase episodes and adjust epsilon decay steps
-    episodes = 50 # Significantly increased episodes
+    episodes = 1000 # Significantly increased episodes
     
     # Estimate average steps per episode based on previous run (e.g., ~7 steps if not improved much)
     # If we expect it to improve to, say, 20-25 steps on average with more lenient termination:

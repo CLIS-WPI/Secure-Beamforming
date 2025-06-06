@@ -787,7 +787,7 @@ def run_simulation():
             episode_sinr_values.append(next_state[0])
             detection_confidence = next_state[4]
             detected_range = next_state[3]
-            attack_detected_this_step = 1 if (detection_confidence > 0.5 and 0 < detected_range < 100) else 0
+            attack_detected_this_step = 1 if (detection_confidence > 0.7 and 0 < detected_range < 75) else 0
             episode_detections_binary.append(attack_detected_this_step)
             
             true_attacker_range_current_step = next_state[5] 

@@ -182,7 +182,7 @@ class MmWaveISACEnv(gym.Env):
 
         self.num_discrete_actions = 5
         self.action_space = spaces.Discrete(self.num_discrete_actions)
-        self.beam_angle_delta_rad = np.deg2rad(5)
+        self.beam_angle_delta_rad = np.deg2rad(2.5)
 
         self.user_position = tf.Variable(self.user_position_init, dtype=tf.float32)
         self.attacker_position = tf.Variable(self.attacker_position_init, dtype=tf.float32)
@@ -511,10 +511,10 @@ class MmWaveISACEnv(gym.Env):
         # --- SINR-based Reward ---
         base_reward_sinr = tf.cond(
             sinr_user > 15.0,
-            lambda: 20.0 + (sinr_user - 15.0) * 1.0,
+            lambda: 20.0 + (sinr_user - 15.0) * 1.5,
             lambda: tf.cond(
                 sinr_user > 10.0,
-                lambda: 10.0 + (sinr_user - 10.0) * 0.8,
+                lambda: 10.0 + (sinr_user - 10.0) * 1.2,
                 lambda: tf.cond(
                     sinr_user > 0.0,
                     lambda: sinr_user * 1.0,
@@ -580,9 +580,10 @@ class MmWaveISACEnv(gym.Env):
             angle_diff_beam_true_attacker = tf.minimum(angle_diff_beam_true_attacker, 2.0 * np.pi - angle_diff_beam_true_attacker)
             
             penalty = tf.cond(
-                angle_diff_beam_true_attacker < np.deg2rad(25),
-                lambda: (1.0 - angle_diff_beam_true_attacker / np.pi) * -7.5 * (1.2 - detection_conf),
-                lambda: 0.0
+            angle_diff_beam_true_attacker < np.deg2rad(25),
+            # CHANGED: Reduce the penalty multiplier from -7.5 to something smaller
+            lambda: (1.0 - angle_diff_beam_true_attacker / np.pi) * -4.0 * (1.2 - detection_conf), # e.g., from -7.5 to -4.0
+            lambda: 0.0
             )
             return penalty
 
@@ -615,7 +616,7 @@ class MmWaveISACEnv(gym.Env):
 # DRL Agent (Double DQN) with tf.data pipeline
 class DoubleDQNAgent:
     # CHANGED: __init__ now prepares for a custom training loop
-    def __init__(self, state_dim, action_n, learning_rate=3e-4, gamma=0.99, # Matched paper LR
+    def __init__(self, state_dim, action_n, learning_rate=3e-4, gamma=0.9, # Matched paper LR
                  epsilon_start=1.0, epsilon_end=0.05, epsilon_decay_env_steps=15000): # Matched paper decay
         self.state_dim = int(state_dim)
         self.action_n = action_n
@@ -754,11 +755,10 @@ def run_simulation():
 
     agent = DoubleDQNAgent(state_dim, action_n,
                            learning_rate=0.0001,
-                           gamma=0.99,
+                           gamma=0.98,
                            epsilon_end=0.05,
                            epsilon_decay_env_steps=epsilon_decay_env_steps_val)
     logging.info(f"Agent initialized with episodes: {episodes}, epsilon_decay_env_steps: {epsilon_decay_env_steps_val}")
-
 
 
     target_update_freq_steps = 1000

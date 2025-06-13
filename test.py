@@ -1,6 +1,7 @@
 # =====================================================================
-# FINAL SCRIPT WITH INTENSIVE CURRICULUM LEARNING
-# Purpose: Implement a robust curriculum with multiple forced successes per episode.
+# SUPER FAST-CHECK SCRIPT - PPO VERSION
+# Purpose: Extremely rapid validation of the core learning logic.
+# Expected runtime: A few minutes.
 # =====================================================================
 import os
 import sys
@@ -52,14 +53,13 @@ except ImportError as e_sionna:
     sys.exit(1)
 
 # =====================================================================
-# ENVIRONMENT (Modified for Intensive Curriculum)
+# ENVIRONMENT (Unchanged)
 # =====================================================================
 class MmWaveISACEnv(gym.Env):
     metadata = {'render_modes': ['human'], 'render_fps': 30}
 
     def __init__(self):
         super(MmWaveISACEnv, self).__init__()
-        # --- Standard Parameters ---
         self.carrier_frequency = 28e9
         self.bandwidth = 100e6
         self.num_bs_physical_rows = 8
@@ -88,8 +88,6 @@ class MmWaveISACEnv(gym.Env):
         self.current_beam_azimuth_tf = tf.Variable(0.0, dtype=tf.float32)
         self.current_isac_effort = tf.Variable(0.7, dtype=tf.float32)
         self.current_step = 0
-        self.is_curriculum_phase = False
-        self.forced_success_steps = [] # Now a list of steps
 
     @tf.function
     def _get_steering_vector(self, azimuth_rad_tf):
@@ -99,34 +97,27 @@ class MmWaveISACEnv(gym.Env):
         positions = self.bs_array.ant_pos
         wavelength = tf.constant(3e8 / self.carrier_frequency, dtype=tf.float32)
         k = tf.constant(2 * np.pi, dtype=tf.float32) / wavelength
-        u = tf.stack([tf.sin(zenith_rad) * tf.cos(azimuth_rad_tf), tf.sin(zenith_rad) * tf.sin(azimuth_rad_tf), tf.cos(zenith_rad)])
+        u_x = tf.sin(zenith_rad) * tf.cos(azimuth_rad_tf)
+        u_y = tf.sin(zenith_rad) * tf.sin(azimuth_rad_tf)
+        u_z = tf.cos(zenith_rad)
+        u = tf.stack([u_x, u_y, u_z])
         phase_shifts = k * tf.reduce_sum(positions * u, axis=1)
         array_response = tf.exp(tf.complex(0.0, phase_shifts))
         sv = array_response * f_theta
         return tf.ensure_shape(sv, [self.num_bs_antennas])
 
     def step(self, action_idx):
-        _, _, _, true_az = self._get_state_components()
-        
-        # --- Intensive Forced Success Logic ---
-        if self.is_curriculum_phase and self.current_step in self.forced_success_steps:
-            self.current_beam_azimuth_tf.assign(true_az)
-            self.current_isac_effort.assign(1.0)
-        else:
-            if action_idx == 0: self.current_beam_azimuth_tf.assign_sub(self.beam_angle_delta_rad)
-            elif action_idx == 1: self.current_beam_azimuth_tf.assign_add(self.beam_angle_delta_rad)
-            elif action_idx == 2: pass
-            elif action_idx == 3: self.current_isac_effort.assign_add(0.2)
-            elif action_idx == 4: self.current_isac_effort.assign_sub(0.2)
-        
+        if action_idx == 0: self.current_beam_azimuth_tf.assign_sub(self.beam_angle_delta_rad)
+        elif action_idx == 1: self.current_beam_azimuth_tf.assign_add(self.beam_angle_delta_rad)
+        elif action_idx == 2: pass
+        elif action_idx == 3: self.current_isac_effort.assign_add(0.2)
+        elif action_idx == 4: self.current_isac_effort.assign_sub(0.2)
         self.current_isac_effort.assign(tf.clip_by_value(self.current_isac_effort, 0.3, 1.0))
         self.current_beam_azimuth_tf.assign(tf.clip_by_value(self.current_beam_azimuth_tf, -np.pi, np.pi))
-        
-        user_move = tf.random.uniform([1, 3], -0.1, 0.1, dtype=tf.float32) * tf.constant([[1.0, 1.0, 0.0]])
+        user_move = tf.random.uniform([1, 3], minval=-0.1, maxval=0.1, dtype=tf.float32) * tf.constant([[1.0, 1.0, 0.0]])
         self.user_position.assign_add(user_move)
-        attacker_move = tf.random.uniform([1, 3], -0.5, 0.5, dtype=tf.float32) * tf.constant([[1.0, 1.0, 0.0]])
+        attacker_move = tf.random.uniform([1, 3], minval=-0.5, maxval=0.5, dtype=tf.float32) * tf.constant([[1.0, 1.0, 0.0]])
         self.attacker_position.assign_add(attacker_move)
-        
         next_state_tensor = self._get_state()
         reward = self._compute_reward(next_state_tensor)
         self.current_step += 1
@@ -137,9 +128,15 @@ class MmWaveISACEnv(gym.Env):
         return next_state_tensor.numpy(), reward.numpy(), terminated.numpy(), truncated, {}
 
     @tf.function
-    def _get_channel_and_powers(self, beam_azimuth, user_pos):
+    def _get_channel_and_powers(self, beam_azimuth, user_pos, attacker_pos):
         bs_loc = tf.reshape(self.bs_position, [1, 1, 3])
-        common_args = {'bs_loc': bs_loc, 'ut_orientations': tf.zeros([1,1,3]), 'bs_orientations': tf.zeros([1,1,3]), 'ut_velocities': tf.zeros([1,1,3]), 'in_state': tf.zeros([1,1], dtype=tf.bool)}
+        common_args = {
+            'bs_loc': bs_loc,
+            'ut_orientations': tf.zeros([1,1,3], dtype=tf.float32),
+            'bs_orientations': tf.zeros([1,1,3], dtype=tf.float32),
+            'ut_velocities': tf.zeros([1,1,3], dtype=tf.float32),
+            'in_state': tf.zeros([1,1], dtype=tf.bool)
+        }
         self.channel_model_core.set_topology(ut_loc=tf.reshape(user_pos, [1,1,3]), **common_args)
         h_user = tf.reduce_mean(self.channel_model_core(1, self.bandwidth)[0][:,0,0,0,:,0,0], axis=0)
         sv = self._get_steering_vector(beam_azimuth)
@@ -148,32 +145,32 @@ class MmWaveISACEnv(gym.Env):
         return tf.maximum(sig_user, 1e-15)
 
     @tf.function
-    def _get_state_components(self):
+    def _get_state(self):
+        sig_user = self._get_channel_and_powers(self.current_beam_azimuth_tf, self.user_position, self.attacker_position)
+        sinr_db = 10.0 * log10(sig_user / (self.no_lin + 1e-20))
         true_vec = self.attacker_position[0] - self.bs_position[0]
         true_range = tf.norm(true_vec)
         true_az = tf.math.atan2(true_vec[1], true_vec[0])
-        sig_user = self._get_channel_and_powers(self.current_beam_azimuth_tf, self.user_position)
-        sinr_db = 10.0 * log10(sig_user / (self.no_lin + 1e-20))
-        return sinr_db, true_vec, true_range, true_az
-
-    @tf.function
-    def _get_state(self):
-        sinr_db, _, true_range, true_az = self._get_state_components()
-        prob_det_base = tf.exp(-0.03 * true_range)
+        aggressive_decay_factor = tf.constant(0.03, dtype=tf.float32)
+        prob_det_base = tf.exp(-aggressive_decay_factor * true_range)
         prob_det = self.current_isac_effort * prob_det_base * 1.75 
         det_az, det_range, conf = -np.pi, 0.0, 0.0
         if tf.logical_and(true_range <= self.sensing_range_max, tf.random.uniform([]) < prob_det):
-            noise_std = 1.0 - (self.current_isac_effort * 0.75)
-            # Reduced sensor noise for more reliable curriculum learning
-            det_az = true_az + tf.random.normal([], stddev=tf.constant(np.deg2rad(5), dtype=tf.float32) * noise_std)
-            det_range = tf.maximum(0.1, true_range + tf.random.normal([], stddev=2.5 * noise_std))
+            noise_std = 1.0 - (self.current_isac_effort * 0.75) 
+            azimuth_noise_std = tf.constant(np.deg2rad(10), dtype=tf.float32) * noise_std
+            det_az = true_az + tf.random.normal([], stddev=azimuth_noise_std)
+            range_noise_std = tf.constant(5.0, dtype=tf.float32) * noise_std
+            det_range = tf.maximum(0.1, true_range + tf.random.normal([], stddev=range_noise_std))
             conf = tf.clip_by_value(prob_det + tf.random.normal([], stddev=0.05), 0.0, 1.0)
-        return tf.stack([tf.clip_by_value(sinr_db, -30., 30.), self.current_beam_azimuth_tf, tf.clip_by_value(det_az, -np.pi, np.pi), tf.clip_by_value(det_range, 0., self.sensing_range_max), conf, tf.clip_by_value(true_range, 0., self.sensing_range_max), true_az])
+        return tf.stack([
+            tf.clip_by_value(sinr_db, -30., 30.), self.current_beam_azimuth_tf,
+            tf.clip_by_value(det_az, -np.pi, np.pi), tf.clip_by_value(det_range, 0., self.sensing_range_max),
+            conf, tf.clip_by_value(true_range, 0., self.sensing_range_max), true_az
+        ])
     
     def reset(self, seed=None, options=None):
         if seed is not None:
             super().reset(seed=seed)
-            np.random.seed(seed)
             tf.random.set_seed(seed)
         self.current_beam_azimuth_tf.assign(0.0)
         self.current_isac_effort.assign(0.7)
@@ -184,13 +181,6 @@ class MmWaveISACEnv(gym.Env):
         full_attacker_offset = tf.concat([attacker_offset_xy, tf.zeros([1, 1], dtype=tf.float32)], axis=1)
         self.attacker_position.assign(self.attacker_position_init + full_attacker_offset)
         self.current_step = 0
-        
-        if self.is_curriculum_phase:
-            # Select 3 unique random steps for forced success
-            self.forced_success_steps = np.random.choice(range(10, 41), 3, replace=False).tolist()
-        else:
-            self.forced_success_steps = []
-
         return self._get_state().numpy(), {}
     
     @tf.function
@@ -204,24 +194,18 @@ class MmWaveISACEnv(gym.Env):
     def _compute_reward(self, state):
         sinr, _, _, det_range, conf, true_range, _ = state[0], state[1], state[2], state[3], state[4], state[5], state[6]
         reward = 0.0
-        # Reduced SINR reward
-        if sinr > 5.0:
-            reward += 1.0 
+        if sinr > 0.0:
+            reward += 5.0
         else:
-            reward += (sinr / 5.0) # More gradual penalty
-        
+            reward += sinr
         is_detected = tf.logical_and(conf > 0.7, det_range > 0)
         if is_detected:
             reward += 100.0
-        
         is_unaware_of_threat = tf.logical_and(true_range < 80.0, conf < 0.7)
         if is_unaware_of_threat:
             reward -= 10.0
-        
-        # High reward for high ISAC effort when threat is near
-        is_proactive = tf.logical_and(true_range < 80.0, self.current_isac_effort > 0.8)
-        if is_proactive:
-            reward += 15.0 # Increased bonus
+        if tf.logical_and(true_range > 100.0, self.current_isac_effort > 0.8):
+            reward -= 5.0
         return reward
     
     def close(self): pass
@@ -316,28 +300,26 @@ class PPOAgent:
         self.memory = []
 
 # =====================================================================
-# MAIN SIMULATION (with Intensive Curriculum)
+# MAIN SIMULATION (Configured for a Super Fast Check)
 # =====================================================================
 def run_simulation():
-    print("\n🚀 Starting DRL Simulation with INTENSIVE Curriculum...")
-    logging.basicConfig(filename='simulation_intensive_curriculum.log', level=logging.INFO, format='%(asctime)s - %(message)s - %(message)s')
+    print("\n🚀 Starting SUPER-FAST-CHECK DRL Simulation...")
+    logging.basicConfig(filename='simulation_super_fast_check.log', level=logging.INFO, format='%(asctime)s - %(message)s - %(message)s')
 
     strategy = tf.distribute.MirroredStrategy()
     print(f'✅ MirroredStrategy enabled. Number of devices: {strategy.num_replicas_in_sync}')
 
-    # --- Hyperparameters ---
-    max_training_timesteps = int(3e5) # Increased training time
-    CURRICULUM_EPISODES = 500 # Longer curriculum phase
-    
-    BATCH_SIZE_PER_REPLICA = 2048 
+    # --- Parameters for Super Fast Check ---
+    BATCH_SIZE_PER_REPLICA = 512  # Very small batch size for frequent updates
     GLOBAL_BATCH_SIZE = BATCH_SIZE_PER_REPLICA * strategy.num_replicas_in_sync
     update_timestep = GLOBAL_BATCH_SIZE
-    
+    max_training_timesteps = int(8e3) # Even shorter runtime: 8,000 steps
+
     with strategy.scope():
         env = MmWaveISACEnv()
         state_dim = env.observation_space.shape[0]
         action_dim = env.action_space.n
-        K_epochs = 40
+        K_epochs = 10 # Fewer epochs per learning step
         policy_clip = 0.2
         gamma = 0.99
         gae_lambda = 0.95
@@ -348,20 +330,13 @@ def run_simulation():
     time_step = 0
     i_episode = 0
     episode_data = []
-    step_level_data = []
-
-    print(f"\n--- Starting training with a {CURRICULUM_EPISODES}-episode intensive curriculum phase ---")
-
+    
+    print("\n--- Starting super-rapid simulation to observe initial learning trends ---")
     while time_step <= max_training_timesteps:
-        env.is_curriculum_phase = (i_episode < CURRICULUM_EPISODES)
         state, _ = env.reset()
-        
-        if i_episode == CURRICULUM_EPISODES:
-            print("\n--- INTENSIVE CURRICULUM PHASE COMPLETE. Agent is now fully autonomous. ---\n")
-
         current_ep_reward = 0
         ep_sinr, ep_det_steps = [], 0
-
+        
         for t in range(1, env.max_steps_per_episode + 1):
             action, log_prob, val = agent.act(state)
             next_state, reward, terminated, truncated, _ = env.step(action)
@@ -371,19 +346,13 @@ def run_simulation():
             current_ep_reward += reward
             state = next_state
             
-            step_level_data.append({
-                'Episode': i_episode, 'Timestep': time_step, 'User_SINR': next_state[0],
-                'Beam_Azimuth': next_state[1], 'ISAC_Effort': env.current_isac_effort.numpy(), 
-                'Detection_Confidence': next_state[4], 'True_Attacker_Range': next_state[5],
-                'Step_Reward': reward, 'Action': action
-            })
-            
             ep_sinr.append(next_state[0])
             if next_state[4] > 0.7 and next_state[3] > 0:
                 ep_det_steps += 1
 
             if len(agent.memory) >= update_timestep:
-                print(f"\n--- Timestep {time_step}: Starting learning step ---")
+                # --- Learning Step ---
+                print(f"--- Timestep ~{time_step}: Starting learning update... ---")
                 mem = agent.memory
                 states, actions, logprobs, vals, rewards, dones = ([item[i] for item in mem] for i in range(6))
                 advantages, rewards_to_go = agent._calculate_advantages(rewards, dones, vals)
@@ -399,7 +368,6 @@ def run_simulation():
                     for batch in dist_dataset:
                         strategy.run(agent.train_step, args=(batch))
                 agent.clear_memory()
-                print("--- Learning step complete ---")
 
             if terminated or truncated:
                 break
@@ -413,18 +381,15 @@ def run_simulation():
             'Steps': t
         })
 
-        if i_episode % 100 == 0:
-            avg_r = np.mean([d['Total_Reward'] for d in episode_data[-100:]])
-            avg_s = np.mean([d['Avg_SINR'] for d in episode_data[-100:]])
-            avg_d = np.mean([d['Detection_Rate_Steps'] for d in episode_data[-100:]])
-            print(f"Episode: {i_episode}, Timestep: {time_step}, Avg Reward: {avg_r:.2f}, Avg SINR: {avg_s:.2f}, Avg Det.Rate: {avg_d:.2f}%")
+        if i_episode % 10 == 0:
+            avg_r = np.mean([d['Total_Reward'] for d in episode_data[-10:]])
+            avg_s = np.mean([d['Avg_SINR'] for d in episode_data[-10:]])
+            avg_d = np.mean([d['Detection_Rate_Steps'] for d in episode_data[-10:]])
+            print(f"Ep: {i_episode}, TS: {time_step}, Avg R: {avg_r:.2f}, Avg SINR: {avg_s:.2f}, Avg Det: {avg_d:.2f}%")
 
-    output_filename = 'ppo_final_intensive_curriculum'
-    pd.DataFrame(episode_data).to_csv(f'{output_filename}_episodes.csv', index=False)
-    pd.DataFrame(step_level_data).to_csv(f'{output_filename}_steps.csv', index=False)
-    agent.actor.save_weights(f"{output_filename}_actor.weights.h5")
-    agent.critic.save_weights(f"{output_filename}_critic.weights.h5")
-    print(f"\n✅ Training complete. Final results saved to '{output_filename}_*.csv'.")
+    # Save results for quick analysis
+    pd.DataFrame(episode_data).to_csv('ppo_super_fast_check_results.csv', index=False)
+    print("\n✅ Super-fast-check simulation complete. Results saved to 'ppo_super_fast_check_results.csv'.")
 
 if __name__ == "__main__":
     run_simulation()

@@ -132,8 +132,8 @@ def plot_publication_isac_strategy(df_steps):
 
 if __name__ == '__main__':
     # --- Correctly point to the final output files ---
-    episode_file = 'ppo_final_intensive_curriculum_episodes.csv'
-    step_file = 'ppo_final_intensive_curriculum_steps.csv'
+    episode_file = 'ppo_final_v4_challenging_episodes.csv'
+    step_file = 'ppo_final_v4_challenging_steps.csv'
     
     # Load episode data
     if os.path.exists(episode_file):

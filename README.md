@@ -21,7 +21,7 @@ The project is designed to run in a containerized environment to ensure reproduc
 * **NVIDIA Container Toolkit** (for GPU acceleration)
 * Python 3.12+
 * TensorFlow 2.17+
-* Sionna 0.13+
+* Sionna 
 * NumPy, Pandas, Matplotlib, Seaborn
 
 ### **Setup and Execution**
@@ -62,7 +62,7 @@ After the simulation is complete, it will generate two primary CSV files: `ppo_f
 
 To generate all figures and statistical summaries used in the paper, run the analysis script:
 ```bash
-python3 analyze_results2.py
+python3 analyze_results.py
 ```
 
 This will save the figures as both `.png` and `.pdf` files in the root directory.
@@ -75,8 +75,6 @@ If you use this code or our methodology in your research, please consider citing
 @inproceedings{hashemi2024secure,
   title={Secure mmWave Beamforming with Proactive ISAC Defense Against Beam Stealing Attacks},
   author={Hashemi Natanzi, Seyed Bagher and Mohammadi, Hossein and Tang, Bo and Marojevic, Vuk},
-  booktitle={IEEE Conference on Communications and Network Security (CNS) - (Placeholder)},
-  year={2024},
   organization={IEEE}
 }
 ```
@@ -87,4 +85,4 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ### **Acknowledgments**
 
-This material is based upon work supported in part by the National Science Foundation (NSF) under Awards CNS-2120442 and IIS-23
+This material is based upon work supported in part by the National Science Foundation (NSF) under Awards CNS-2120442 and IIS-2325863, and the National Telecommunications and Information Administration (NTIA) under Award No. 51-60-IF007.

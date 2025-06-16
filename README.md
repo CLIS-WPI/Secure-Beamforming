@@ -13,20 +13,6 @@ Our framework models a scenario where a Base Station (BS) must maintain a secure
 * **Proactive ISAC Defense:** The agent learns a dynamic and adaptive policy to intelligently allocate ISAC resources, performing targeted sensing only when a threat is perceived, thus ensuring both security and resource efficiency.
 * **High-Fidelity Simulation:** The environment is simulated using **Sionna**, a GPU-accelerated library for link-level simulations, based on the 3GPP TR 38.901 channel model.
 
-### **Repository Structure**
-
-```
-.
-├── main.py                     # Main script for running the final DRL simulation.
-├── analyze_results2.py         # Script to analyze simulation output and generate plots.
-├── run_baseline.py             # Script to run the non-learning static baseline for comparison.
-├── Dockerfile                  # Defines the container environment with all dependencies.
-├── start.sh                    # Convenience script to build and run the Docker container.
-└── Images/
-    ├── scenario.png
-    └── ... (other figures)
-```
-
 ### **Requirements**
 
 The project is designed to run in a containerized environment to ensure reproducibility. The main dependencies are:
@@ -101,4 +87,4 @@ This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md
 
 ### **Acknowledgments**
 
-This material is based upon work supported in part by the National Science Foundation (NSF) under Awards CNS-2120442 and IIS-2325863, and the National Telecommunications and Information Administration (NTIA) under Award No. 51-60-IF007.
+This material is based upon work supported in part by the National Science Foundation (NSF) under Awards CNS-2120442 and IIS-23

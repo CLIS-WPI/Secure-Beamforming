@@ -2,133 +2,213 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import numpy as np
+import os
 
-def plot_training_reward(df_episode, window_size=25):
+def plot_publication_training_curves(df_episode, window_size=100):
     """
-    Plots a clean and clear training reward curve.
-    This shows that the DRL agent was successfully learning.
+    Plots the final learning curves for reward, SINR, detection rate, and policy stability,
+    formatted for publication in a 2x2 grid.
     """
+    if df_episode.empty:
+        print("Error: Episode data is empty. Skipping training curve plot.")
+        return
+
+    plt.style.use('seaborn-v0_8-ticks')
+    fig, axes = plt.subplots(2, 2, figsize=(20, 16)) # Changed to 2x2 layout
+    fig.suptitle('PPO Agent Training Performance Analysis', fontsize=28, fontweight='bold')
+
+    # Define subplot labels and flatten axes for easy iteration
+    subplot_labels = ['(a)', '(b)', '(c)', '(d)']
+    flat_axes = axes.flatten()
+
+    # --- Plot (a): Cumulative Reward ---
+    ax = flat_axes[0]
+    reward_moving_avg = df_episode['Total_Reward'].rolling(window=window_size, min_periods=1).mean()
+    ax.plot(df_episode['Episode'], reward_moving_avg, color='royalblue', linewidth=3, label=f'Moving Avg (w={window_size})')
+    ax.scatter(df_episode['Episode'], df_episode['Total_Reward'], alpha=0.1, s=20, color='lightsteelblue')
+    ax.set_ylabel('Cumulative Reward', fontsize=20)
+    ax.set_title('Reward Progression', fontsize=22, fontweight='bold')
+    ax.legend(fontsize=16)
+    
+    # --- Plot (b): Detection Rate ---
+    ax = flat_axes[1]
+    detection_moving_avg = df_episode['Detection_Rate_Steps'].rolling(window=window_size, min_periods=1).mean()
+    ax.plot(df_episode['Episode'], detection_moving_avg, color='crimson', linewidth=3, label=f'Moving Avg (w={window_size})')
+    ax.scatter(df_episode['Episode'], df_episode['Detection_Rate_Steps'], alpha=0.1, s=20, color='lightcoral')
+    ax.set_ylabel('Successful Detection Rate (%)', fontsize=20)
+    ax.set_title('Security Performance', fontsize=22, fontweight='bold')
+    ax.set_ylim(0, 105)
+    ax.legend(fontsize=16)
+
+    # --- Plot (c): Communication Quality (SINR) ---
+    ax = flat_axes[2]
+    sinr_moving_avg = df_episode['Avg_SINR'].rolling(window=window_size, min_periods=1).mean()
+    ax.plot(df_episode['Episode'], sinr_moving_avg, color='forestgreen', linewidth=3, label=f'Moving Avg (w={window_size})')
+    ax.scatter(df_episode['Episode'], df_episode['Avg_SINR'], alpha=0.1, s=20, color='lightgreen')
+    ax.set_ylabel('Average SINR (dB)', fontsize=20)
+    ax.set_title('Communication Performance', fontsize=22, fontweight='bold')
+    ax.axhline(y=5.0, color='darkorange', linestyle='--', linewidth=2.5, label='Adequate SINR Threshold (5 dB)')
+    ax.legend(fontsize=16)
+
+    # --- Plot (d): Policy Stability ---
+    ax = flat_axes[3]
+    reward_std_moving_avg = df_episode['Total_Reward'].rolling(window=window_size, min_periods=1).std()
+    ax.plot(df_episode['Episode'], reward_std_moving_avg, color='purple', linewidth=3, label=f'Moving Avg (w={window_size})')
+    ax.set_ylabel('Std. Dev. of Reward', fontsize=20)
+    ax.set_title('Learned Policy Stability', fontsize=22, fontweight='bold')
+    ax.legend(fontsize=16)
+
+    # General formatting for all subplots
+    for i, ax in enumerate(flat_axes):
+        ax.grid(True, which='both', linestyle='--', linewidth=0.7)
+        ax.tick_params(axis='both', which='major', labelsize=16)
+        ax.set_xlabel('Episode', fontsize=20)
+        # Add subplot labels (a), (b), etc.
+        ax.text(-0.1, 1.05, subplot_labels[i], transform=ax.transAxes, 
+                fontsize=26, fontweight='bold', va='top', ha='left')
+
+    plt.tight_layout(rect=[0, 0.03, 1, 0.95]) # Adjust rect to make space for suptitle
+    plt.savefig('figure_publication_1_training_curves_updated.pdf', format='pdf', dpi=300, bbox_inches='tight')
+    plt.savefig('figure_publication_1_training_curves_updated.png', format='png', dpi=300, bbox_inches='tight')
+    print("✅ Figure 1 (Updated Publication Training Curves) saved.")
+
+def plot_publication_tradeoff(df_episode):
+    """
+    Creates a clearer scatter plot to visualize the final trade-off between SINR and Detection Rate.
+    """
+    if df_episode.empty:
+        print("Warning: Episode data is empty. Skipping trade-off plot.")
+        return
+
     plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(8, 5))
+    fig, ax = plt.subplots(figsize=(12, 9)) # Increased figure size
 
-    moving_avg = df_episode['Total_Reward'].rolling(window=window_size, center=True, min_periods=1).mean()
-    ax.scatter(df_episode['Episode'], df_episode['Total_Reward'], alpha=0.2, s=10, label='Reward per Episode', color='lightgray')
-    ax.plot(df_episode['Episode'], moving_avg, color='royalblue', linewidth=2.5, label=f'Moving Average (window={window_size})')
+    # Use the latter half of training data to represent the converged policy
+    converged_df = df_episode.iloc[int(len(df_episode) * 0.5):]
 
-    ax.set_title('DRL Agent Training Progression', fontsize=16, fontweight='bold')
-    ax.set_xlabel('Episode', fontsize=12)
-    ax.set_ylabel('Cumulative Reward', fontsize=12)
-    ax.legend(fontsize=10)
-    ax.tick_params(axis='both', which='major', labelsize=10)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    scatter = ax.scatter(
+        converged_df['Avg_SINR'],
+        converged_df['Detection_Rate_Steps'],
+        c=converged_df['Total_Reward'],
+        cmap='viridis',
+        alpha=0.7, # Increased alpha for better visibility
+        s=80,      # Increased size for better visibility
+        edgecolor='k',
+        linewidth=0.8
+    )
+    
+    cbar = fig.colorbar(scatter, ax=ax)
+    cbar.set_label('Cumulative Reward', fontsize=18, fontweight='bold')
+    cbar.ax.tick_params(labelsize=14)
+    
+    ax.set_title('Final Learned Policy: SINR vs. Detection Trade-off', fontsize=22, fontweight='bold')
+    ax.set_xlabel('Average SINR per Episode (dB)', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Detection Rate per Episode (%)', fontsize=18, fontweight='bold')
+    ax.grid(True, which='both', linestyle='--', linewidth=0.6)
+    ax.tick_params(axis='both', which='major', labelsize=16)
     
     plt.tight_layout()
-    plt.savefig('figure_1_training_curve.pdf', format='pdf', dpi=300)
-    plt.savefig('figure_1_training_curve.png', format='png', dpi=300)
-    print("✅ Figure 1 (Training Curve) saved.")
+    plt.savefig('figure_publication_2_tradeoff_plot_updated.pdf', format='pdf', dpi=300)
+    plt.savefig('figure_publication_2_tradeoff_plot_updated.png', format='png', dpi=300)
+    print("✅ Figure 2 (Updated SINR/Detection Rate Trade-off) saved.")
 
-def plot_sinr_distribution(df_eval):
+def plot_publication_isac_strategy(df_steps):
     """
-    Creates a box plot to compare the SINR distribution of the DRL agent and the baseline.
+    Creates a clearer Kernel Density Estimate plot to show the agent's ISAC effort strategy.
     """
+    if df_steps.empty:
+        print("Warning: Step-level data not found. Skipping ISAC strategy plot.")
+        return
+        
     plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(8, 6))
-    plot_data = pd.DataFrame({
-        'Baseline': df_eval['Baseline_SINR'],
-        'DRL-ISAC (Ours)': df_eval['DRL_SINR_Avg_Eval']
-    })
-    sns.boxplot(data=plot_data, ax=ax, palette=['skyblue', 'lightgreen'], width=0.5,
-                boxprops=dict(alpha=.8), whiskerprops=dict(alpha=.8), capprops=dict(alpha=.8))
-    sns.stripplot(data=plot_data, ax=ax, color=".25", size=3)
-    ax.set_title('SINR Distribution over 100 Test Scenarios', fontsize=16, fontweight='bold')
-    ax.set_ylabel('Average UE SINR (dB)', fontsize=12)
-    ax.tick_params(axis='both', which='major', labelsize=10)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
-    median_baseline = plot_data['Baseline'].median()
-    median_drl = plot_data['DRL-ISAC (Ours)'].median()
-    ax.text(0, median_baseline, f' {median_baseline:.2f}', 
-            verticalalignment='center', size='small', color='black', weight='semibold',
-            bbox=dict(facecolor='white', alpha=0.5, boxstyle='round,pad=0.2'))
-    ax.text(1, median_drl, f' {median_drl:.2f}', 
-            verticalalignment='center', size='small', color='black', weight='semibold',
-            bbox=dict(facecolor='white', alpha=0.5, boxstyle='round,pad=0.2'))
-    plt.tight_layout()
-    plt.savefig('figure_2_sinr_distribution.pdf', format='pdf', dpi=300)
-    plt.savefig('figure_2_sinr_distribution.png', format='png', dpi=300)
-    print("✅ Figure 2 (SINR Distribution) saved.")
+    fig, ax = plt.subplots(figsize=(12, 7)) # Increased figure size
+    
+    # Use the latter half of step data for the converged policy
+    converged_steps = df_steps.iloc[int(len(df_steps) * 0.5):]
+    
+    near_attacker_df = converged_steps[converged_steps['True_Attacker_Range'] < 75.0]
+    far_attacker_df = converged_steps[converged_steps['True_Attacker_Range'] >= 75.0]
 
-def plot_isac_effort_strategy(df_steps):
-    """
-    Creates a histogram to show how the agent uses ISAC effort strategically.
-    """
-    plt.style.use('seaborn-v0_8-whitegrid')
-    fig, ax = plt.subplots(figsize=(8, 5))
-    near_attacker_df = df_steps[df_steps['True_Attacker_Range'] < 75.0]
-    far_attacker_df = df_steps[df_steps['True_Attacker_Range'] >= 75.0]
-    sns.histplot(near_attacker_df['ISAC_Effort'], bins=np.arange(0.2, 1.3, 0.2), 
-                 ax=ax, color='orangered', label='Attacker Near (< 75m)', stat='density', alpha=0.7)
-    sns.histplot(far_attacker_df['ISAC_Effort'], bins=np.arange(0.2, 1.3, 0.2), 
-                 ax=ax, color='dodgerblue', label='Attacker Far (>= 75m)', stat='density', alpha=0.6)
-    ax.set_title('Learned ISAC Effort Strategy', fontsize=16, fontweight='bold')
-    ax.set_xlabel('ISAC Effort', fontsize=12)
-    ax.set_ylabel('Proportional Frequency', fontsize=12)
-    ax.legend(fontsize=10)
-    ax.tick_params(axis='both', which='major', labelsize=10)
-    ax.grid(True, which='both', linestyle='--', linewidth=0.5)
+    if not near_attacker_df.empty:
+        sns.kdeplot(near_attacker_df['ISAC_Effort'], ax=ax, color='orangered', label='Attacker Near (< 75m)', fill=True, alpha=0.6, linewidth=3, bw_adjust=0.5)
+    if not far_attacker_df.empty:
+        sns.kdeplot(far_attacker_df['ISAC_Effort'], ax=ax, color='dodgerblue', label='Attacker Far (>= 75m)', fill=True, alpha=0.6, linewidth=3, bw_adjust=0.5)
+
+    ax.set_title('Learned Strategy for ISAC Resource Allocation', fontsize=22, fontweight='bold')
+    ax.set_xlabel('ISAC Effort', fontsize=18, fontweight='bold')
+    ax.set_ylabel('Probability Density', fontsize=18, fontweight='bold')
+    ax.legend(fontsize=16) # Increased legend font size
+    ax.tick_params(axis='both', which='major', labelsize=16)
+    
     plt.tight_layout()
-    plt.savefig('figure_3_isac_effort.pdf', format='pdf', dpi=300)
-    plt.savefig('figure_3_isac_effort.png', format='png', dpi=300)
-    print("✅ Figure 3 (ISAC Effort Strategy) saved.")
+    plt.savefig('figure_publication_3_isac_strategy_updated.pdf', format='pdf', dpi=300)
+    plt.savefig('figure_publication_3_isac_strategy_updated.png', format='png', dpi=300)
+    print("✅ Figure 3 (Updated ISAC Resource Allocation Strategy) saved.")
 
 
 if __name__ == '__main__':
-    try:
-        # Load the data from the CSV files
-        episode_df = pd.read_csv('episode_results_v7.csv')
-        eval_df = pd.read_csv('evaluation_results_v7.csv')
-        step_level_df = pd.read_csv('step_level_detection_data_v7.csv')
-        print("CSV files loaded successfully.")
+    # --- Correctly point to the final output files ---
+    episode_file = 'ppo_final_v4_challenging_episodes.csv'
+    step_file = 'ppo_final_v4_challenging_steps.csv'
+    
+    # Initialize DataFrames to prevent NameError
+    episode_df = pd.DataFrame()
+    step_level_df = pd.DataFrame()
 
-        print("\n--- Generating Publication-Quality Figures ---")
-        plot_training_reward(episode_df)
-        plot_sinr_distribution(eval_df)
-        plot_isac_effort_strategy(step_level_df)
+    # Load episode data with robust error handling
+    if os.path.exists(episode_file):
+        try:
+            episode_df = pd.read_csv(episode_file)
+            print(f"Successfully loaded '{episode_file}'.")
+        except Exception as e:
+            print(f"Error loading '{episode_file}': {e}. Proceeding with empty DataFrame.")
+    else:
+        print(f"Error: '{episode_file}' not found. Episode-level analysis is not possible.")
 
-        # --- NEW: Advanced Statistical Analysis ---
-        print("\n--- Advanced KPI Analysis ---")
+    # Load step-level data with robust error handling
+    if os.path.exists(step_file):
+        try:
+            step_level_df = pd.read_csv(step_file)
+            print(f"Successfully loaded '{step_file}'.")
+        except Exception as e:
+            print(f"Error loading '{step_file}': {e}. Proceeding with empty DataFrame.")
+    else:
+        print(f"\nWarning: Step-level data file ('{step_file}') not found.")
         
-        # --- ISAC Effort Analysis ---
-        near_attacker_df = step_level_df[step_level_df['True_Attacker_Range'] < 75.0]
-        far_attacker_df = step_level_df[step_level_df['True_Attacker_Range'] >= 75.0]
-        avg_isac_effort_near = near_attacker_df['ISAC_Effort'].mean()
-        avg_isac_effort_far = far_attacker_df['ISAC_Effort'].mean()
-        print(f"Avg ISAC Effort (Attacker Near < 75m): {avg_isac_effort_near:.2f}")
-        print(f"Avg ISAC Effort (Attacker Far >= 75m): {avg_isac_effort_far:.2f}")
+    print("\n--- Generating Publication-Ready Performance Figures ---")
+    plot_publication_training_curves(episode_df)
+    plot_publication_tradeoff(episode_df)
+    plot_publication_isac_strategy(step_level_df)
+
+    # --- In-depth statistical analysis on the converged policy ---
+    if not episode_df.empty:
+        print("\n--- Final Converged Policy Performance Analysis ---")
+        # --- FIX: Use the correct variable name 'episode_df' ---
+        converged_episodes = episode_df.iloc[int(len(episode_df) * 0.7):]
         
-        # --- Detection Rate Analysis based on Proximity ---
-        # Get the episode numbers where the attacker was near vs far
-        near_episodes = near_attacker_df['Episode'].unique()
-        far_episodes = far_attacker_df['Episode'].unique()
+        print(f"Analysis performed on the last {len(converged_episodes)} episodes:\n")
         
-        # Filter evaluation data for these episodes
-        eval_near = eval_df[eval_df['Test_Scenario'].isin(near_episodes)]
-        eval_far = eval_df[eval_df['Test_Scenario'].isin(far_episodes)]
+        # Calculate statistics
+        reward_stats = converged_episodes['Total_Reward'].describe()
+        sinr_stats = converged_episodes['Avg_SINR'].describe()
+        detection_stats = converged_episodes['Detection_Rate_Steps'].describe()
+        
+        print("--- Reward Statistics ---")
+        print(f"  - Mean: {reward_stats['mean']:.2f}")
+        print(f"  - Std Dev (Stability): {reward_stats['std']:.2f}")
+        print(f"  - Median (Typical Value): {reward_stats['50%']:.2f}")
+        print(f"  - Min / Max: {reward_stats['min']:.2f} / {reward_stats['max']:.2f}\n")
+        
+        print("--- Communication Quality (User SINR) Statistics ---")
+        print(f"  - Mean: {sinr_stats['mean']:.2f} dB")
+        print(f"  - Std Dev: {sinr_stats['std']:.2f} dB")
+        print(f"  - Median: {sinr_stats['50%']:.2f} dB")
+        print(f"  - Min / Max: {sinr_stats['min']:.2f} / {sinr_stats['max']:.2f} dB\n")
 
-        if not eval_near.empty:
-            critical_detection_rate = eval_near['DRL_Detected_In_Episode_Binary'].mean() * 100
-            print(f"Critical Detection Rate (Attacker Near < 75m): {critical_detection_rate:.2f}%")
-        else:
-            print("No 'near attacker' scenarios found in evaluation data.")
+        print("--- Security Performance (Detection Rate) Statistics ---")
+        print(f"  - Mean Detection Rate: {detection_stats['mean']:.2f}%")
+        print(f"  - Std Dev: {detection_stats['std']:.2f}%")
+        print(f"  - Median: {detection_stats['50%']:.2f}%")
+        print(f"  - Max Detection Rate in an episode: {detection_stats['max']:.2f}%\n")
 
-        if not eval_far.empty:
-            non_critical_detection_rate = eval_far['DRL_Detected_In_Episode_Binary'].mean() * 100
-            print(f"Non-Critical Detection Rate (Attacker Far >= 75m): {non_critical_detection_rate:.2f}%")
-        else:
-            print("No 'far attacker' scenarios found in evaluation data.")
-            
-        print("\nAll figures and analysis completed successfully!")
-
-    except FileNotFoundError as e:
-        print(f"\nError: {e}. Make sure the required CSV files are in the same directory.")
-    except Exception as e:
-        print(f"An unexpected error occurred: {e}")
+    print("\nAnalysis successfully completed.")
